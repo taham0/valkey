@@ -221,6 +221,7 @@ typedef struct {
     dbEntry *de;
     bool is_cloned;
     bool is_rehashing_paused;
+    bool from_feeder; // Queued by the scan, not expedited by a command
 } dbEntryData;
 
 typedef struct {

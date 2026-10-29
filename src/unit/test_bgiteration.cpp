@@ -5,6 +5,7 @@
  */
 
 #include "generated_wrappers.hpp"
+#include <thread>
 #include <vector>
 
 using namespace ::testing;
@@ -3169,4 +3170,71 @@ TEST_F(BgIterationTest, checkNoKeysWriteIsReplicated) {
 
     expectReadKeySequence(it, 3, LAST_ITEM);
     expectReadComplete(it);
+}
+
+
+// During a save, a write to an unsaved key sends that key to the front of the queue.  If 0-2 such
+//  keys are waiting when a feed runs, the queue target must still grow, because the save thread
+//  has finished every key the scan gave it.
+TEST_F(BgIterationTest, queueTargetGrowsWithExpeditedKeysWaiting) {
+    // Put 4 buckets of 1000 keys in DB 0.  Each feed queues one whole bucket, so the scan stays in
+    //  DB 0 and the DB 1 keys are never saved by the scan.
+    char key[8];
+    for (char bucket = 'A'; bucket <= 'D'; bucket++) {
+        for (int i = 0; i < 1000; i++) {
+            snprintf(key, sizeof(key), "%c%03d", bucket, i);
+            addKeyToDb(0, key, key);
+        }
+    }
+
+    // Start a consistent save, as BGSAVE does.  Capture its feed timer so the test runs each feed.
+    aeTimeProc *feed = nullptr;
+    EXPECT_CALL(mock, aeCreateTimeEvent(_, _, _, _, _)).WillOnce(DoAll(SaveArg<2>(&feed), Return(0)));
+    bgIterator *it = bgIteratorCreateFullScanIter("iter", BGITERATOR_CONSISTENCY_START, NULL,
+                                                  iteratorCleanupFn, PRIVDATA);
+    ASSERT_NE(feed, nullptr);
+
+    // Returns the iterator's current counters.
+    auto status = [it] {
+        bgIteratorStatus s;
+        bgIteratorGetStatus(it, &s);
+        return s;
+    };
+
+    // Writes the next DB 1 key, which sends it to the front of the queue.
+    int nextKey = ITEMS_PER_DB; // the first DB 1 key
+    auto writeUnsavedKey = [&] {
+        client *writer = getWriteClient(nextKey++, "xxx");
+        simulateBlockedWrite(writer);
+        freeTestClient(writer);
+    };
+
+    for (unsigned long waiting = 0; waiting <= 2; waiting++) {
+        // 1. The save thread reads every queued key, plus one read that marks the last key done
+        //    and then waits on the empty queue.  (A read on the main thread would run a feed.)
+        unsigned long queued = status().queue_length;
+        std::thread saveThread([it, queued] {
+            for (unsigned long i = 0; i <= queued; i++) bgIteratorRead(it);
+        });
+
+        // Wait (up to 10 s) until the save thread has finished every key.
+        for (int ms = 0; ms < 10000 && status().dbentries_processed < status().dbentries_queued; ms++) {
+            usleep(1000);
+        }
+        EXPECT_EQ(status().dbentries_processed, status().dbentries_queued);
+
+        // 2. Write waiting + 1 unsaved keys.  The blocked read takes one and the thread exits,
+        //    leaving `waiting` keys in the queue.
+        for (unsigned long i = 0; i <= waiting; i++) writeUnsavedKey();
+        saveThread.join();
+        ASSERT_EQ(status().queue_length, waiting);
+
+        // 3. Run one feed.  The target must grow, however many keys are waiting.
+        unsigned long targetBefore = status().queue_length_target;
+        feed(NULL, 0, NULL);
+        EXPECT_GT(status().queue_length_target, targetBefore) << waiting << " keys waiting";
+    }
+
+    bgIteratorTerminate(it);
+    expectAnythingCleanup(it);
 }
