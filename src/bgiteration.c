@@ -418,6 +418,7 @@ struct bgIterator {
     unsigned long flushdb_processed;        // Updated by client thread
     unsigned long dbentry_clones_queued;    // Updated by main thread
     unsigned long dbentry_clones_processed; // Updated by client thread
+    unsigned long fed_remaining;            // dbentries queued by the scan, not yet returned.  Main thread only
     monotime monotonic_start_time;          // Time iteration started
 
     /* FLUSHDB and SWAPDB are special in that they affect all keys.  When expediting a key, it's
@@ -852,6 +853,7 @@ static bgIteratorItem *makeDbEntryItem(dbEntry *de, int dbid, bool isCloned) {
     item->u.dbe.de = de;
     item->u.dbe.is_cloned = isCloned;
     item->u.dbe.is_rehashing_paused = pauseRehashing(de);
+    item->u.dbe.from_feeder = false;
 
     return item;
 }
@@ -969,13 +971,14 @@ static sds createEntryString(int dbid, dbEntry *de) {
 
 
 static void feedIterator(bgIterator *it, monotime end_time_us) {
-    unsigned int initial_queue_len = mutexQueueLength(it->items_for_iterator);
-
-    /* The queue size dynamically adjusts using an AIMD approach.  If we have left over stuff from
-     * the prior call to feedIterator, reduce by half the remaining size.  If the queue ran dry
-     * and we have time left (at the end of this function), additively increase the queue length. */
-    if (initial_queue_len > 2 && it->item_count_target >= initial_queue_len) {
-        it->item_count_target -= initial_queue_len / 2;
+    /* The queue size dynamically adjusts using an AIMD approach.  If keys queued by the prior call to
+     * feedIterator haven't all come back from the client, reduce by half the remaining count.  If
+     * they all came back and we have time left (at the end of this function), additively increase
+     * the queue length.  Expedited keys aren't counted, as they can be waiting even when the client
+     * is idle. */
+    unsigned long remaining = it->fed_remaining;
+    if (remaining > 2 && it->item_count_target >= remaining) {
+        it->item_count_target -= remaining / 2;
     }
 
     // Now do some feeding
@@ -1059,12 +1062,14 @@ static void feedIterator(bgIterator *it, monotime end_time_us) {
             }
 
             bgIteratorItem *item = makeDbEntryItem(de, dbid, false);
+            item->u.dbe.from_feeder = true;
             fifoPush(itemsToAdd, item);
         }
         fifoRelease(dbEntryFifo);
 
         if (fifoLength(itemsToAdd) > 0) {
             it->dbentries_queued += fifoLength(itemsToAdd);
+            it->fed_remaining += fifoLength(itemsToAdd);
             mutexQueueAddMultiple(it->items_for_iterator, itemsToAdd);
         }
         fifoRelease(itemsToAdd);
@@ -1075,8 +1080,10 @@ static void feedIterator(bgIterator *it, monotime end_time_us) {
         }
     }
 
-    // Smart logic to dynamically adjust the size of the queue
-    if (initial_queue_len == 0 && have_time && it->item_count_target < BGITER_QUEUE_MAX_LENGTH) {
+    // Smart logic to dynamically adjust the size of the queue.  Grow only if every key had come back
+    //  and this call queued more.
+    if (remaining == 0 && it->fed_remaining > remaining && have_time &&
+        it->item_count_target < BGITER_QUEUE_MAX_LENGTH) {
         it->item_count_target += BGITER_QUEUE_INCREASE_INCR;
     }
 }
@@ -1471,6 +1478,7 @@ static void processReturnOfItemToMainThread(bgIterator *it, bgIteratorItem *item
         break;
 
     case BGITERATOR_ITEM_DBENTRY:
+        if (item->u.dbe.from_feeder) it->fed_remaining--;
         if (item->u.dbe.is_cloned) {
             freeClonedDictEntry(item->u.dbe.de);
         } else {
@@ -1516,6 +1524,7 @@ static void processReturnOfItemToMainThread(bgIterator *it, bgIteratorItem *item
         serverAssert(it->swapdb_queued == it->swapdb_processed);
         serverAssert(it->flushdb_queued == it->flushdb_processed);
         serverAssert(it->dbentry_clones_queued == it->dbentry_clones_processed);
+        serverAssert(it->fed_remaining == 0);
 
         listEmpty(curCmdMissingKeys); // Just in case any remain
 
@@ -2047,6 +2056,7 @@ static bgIterator *bgIteratorCreate(const char *name,
     it->flushdb_processed = 0;
     it->dbentry_clones_queued = 0;
     it->dbentry_clones_processed = 0;
+    it->fed_remaining = 0;
 
     it->barrier_items = 0;
 
