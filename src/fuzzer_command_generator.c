@@ -8,6 +8,7 @@
 #include "commands.h"
 #include "fuzzer_command_generator.h"
 #include "cli_common.h"
+#include "crc16_slottable.h"
 #include "sds.h"
 #include "dict.h"
 #include "zmalloc.h"
@@ -1128,20 +1129,6 @@ static int shouldSkipOptionalArgument(CommandArgument *arg) {
     return (arg->flags & CMD_ARG_OPTIONAL) && (rand() % OPTIONAL_ARG_PROBABILITY == 0);
 }
 
-/* Generate a new random slot tag for cluster mode */
-static sds generateSlotTag(void) {
-    int slotNum = rand() % 21; /* Generate slot number from 0 to 20 */
-    return sdscatprintf(sdsempty(), "{slot-%d}", slotNum);
-}
-
-/* Ensure client context has a current slot tag for cluster mode */
-static void ensureSlotTag(void) {
-    /* In cluster mode, ensure we have a slot tag */
-    if (!client_ctx->current_slot_tag) {
-        client_ctx->current_slot_tag = generateSlotTag();
-    }
-}
-
 /* Add keys to the command based on command group/type */
 static void addKeysToCommand(FuzzerCommand *cmd, int numkeys, CommandArgument *arg) {
     /* Default prefix if we can't determine the type */
@@ -1718,9 +1705,6 @@ static void checkAndUpdateSubscribeMode(const char *commandName) {
 }
 
 void generateSingleCmd(FuzzerCommand *cmd) {
-    /* Ensure we have a slot tag for cluster mode to keep all keys in the same slot */
-    ensureSlotTag();
-
     CommandEntry *selectedCommand;
 
     do {
@@ -1939,13 +1923,14 @@ void cleanupFuzzer(void) {
 }
 
 /* Initialize thread-local client context - called at thread start */
-void initThreadClientCtx(int fuzz_flags) {
+void initThreadClientCtx(int fuzz_flags, int slot) {
     client_ctx = zmalloc(sizeof(FuzzerClientCtx));
     client_ctx->in_multiexec = 0;
     client_ctx->in_subscribe_mode = 0;
     client_ctx->subscribe_type = 0;
     client_ctx->in_lua_script = 0;
-    client_ctx->current_slot_tag = NULL;
+    /* In cluster mode all keys of the client use one hash tag, for a slot its node owns */
+    client_ctx->current_slot_tag = fuzz_ctx->cluster_mode ? sdscatprintf(sdsempty(), "{%s}", crc16_slot_table[slot]) : NULL;
     client_ctx->numkeys = 1;
     client_ctx->fuzz_flags = fuzz_flags;
 
@@ -1958,10 +1943,6 @@ void resetClientFuzzCtx(void) {
     client_ctx->in_subscribe_mode = 0;
     client_ctx->subscribe_type = 0;
     client_ctx->in_lua_script = 0;
-    if (client_ctx->current_slot_tag) {
-        sdsfree(client_ctx->current_slot_tag);
-        client_ctx->current_slot_tag = NULL;
-    }
 }
 
 /* Free thread-local client context */
@@ -2000,9 +1981,6 @@ FuzzerCommand *generateCmd(void) {
     } else {
         generateSingleCmd(cmd);
     }
-
-    sdsfree(client_ctx->current_slot_tag);
-    client_ctx->current_slot_tag = NULL;
 
     return cmd;
 }

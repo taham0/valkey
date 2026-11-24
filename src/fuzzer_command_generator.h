@@ -18,7 +18,7 @@ typedef enum {
 
 int initFuzzer(valkeyContext *ctx, long long num_keys, int cluster_mode, int fuzz_flags);
 void cleanupFuzzer(void);
-void initThreadClientCtx(int fuzz_flags);
+void initThreadClientCtx(int fuzz_flags, int slot);
 void resetClientFuzzCtx(void);
 void freeClientCtx(void);
 FuzzerCommand *generateCmd(void);

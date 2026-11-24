@@ -79,6 +79,7 @@ static LogLevel current_log_level = LOG_DEBUG;
 typedef struct {
     const char *host;
     int port;
+    int slot; /* Slot of the client's keys in cluster mode, -1 otherwise */
     int commands_num;
     int thread_id;
     ErrorList error_list;     /* Thread-local error list */
@@ -409,7 +410,8 @@ typedef enum {
     CMD_SUCCESS = 0,      /* Command executed successfully */
     CMD_ERROR = 1,        /* General error occurred */
     CMD_DISCONNECTED = 2, /* Connection closed by server */
-    CMD_TIMEOUT = 3       /* Command timed out */
+    CMD_TIMEOUT = 3,      /* Command timed out */
+    CMD_MOVED = 4         /* The client's slot moved to another node */
 } CommandResult;
 
 static void handleMalformedReply(valkeyContext *ctx, FuzzerCommand *cmd) {
@@ -543,8 +545,22 @@ static void validateReplyAndUpdateCounters(valkeyReply *reply, FuzzerCommand *cm
     }
 }
 
+/* Return 1 and set host/port to the new owner if the reply is a MOVED for the given slot */
+static int isMovedForSlot(valkeyReply *reply, int slot, char *host, size_t hostlen, int *port) {
+    int moved_slot;
+    char addr[256], *sep;
+    if (reply->type != VALKEY_REPLY_ERROR || sscanf(reply->str, "MOVED %d %255s", &moved_slot, addr) != 2 ||
+        moved_slot != slot || (sep = strrchr(addr, ':')) == NULL) {
+        return 0;
+    }
+    *sep = '\0';
+    snprintf(host, hostlen, "%s", addr);
+    *port = atoi(sep + 1);
+    return 1;
+}
+
 /* Send a single command and wait for its reply */
-static CommandResult sendCommandAndGetReply(valkeyContext *ctx) {
+static CommandResult sendCommandAndGetReply(valkeyContext *ctx, int slot, char *host, size_t hostlen, int *port) {
     int ret = CMD_SUCCESS;
 
     FuzzerCommand *cmd = generateCmd();
@@ -565,6 +581,7 @@ static CommandResult sendCommandAndGetReply(valkeyContext *ctx) {
 
         /* Validate reply and update counters */
         validateReplyAndUpdateCounters(reply, cmd);
+        if (isMovedForSlot(reply, slot, host, hostlen, port)) ret = CMD_MOVED;
         freeReplyObject(reply);
     }
 
@@ -575,28 +592,31 @@ static CommandResult sendCommandAndGetReply(valkeyContext *ctx) {
 /* Connect and fuzz a Valkey server with optional TLS support
  * Returns 0 on success, non-zero on error
  * ssl_config can be NULL to disable TLS */
-int connectAndFuzz(const char *host, int port, int commands_num, cliSSLconfig *ssl_config) {
+int connectAndFuzz(const char *host, int port, int slot, int commands_num, cliSSLconfig *ssl_config) {
     valkeyContext *ctx;
     int commands_sent = 0;
+    char node_host[256]; /* Node to talk to, updated when the client's slot moves */
+    int node_port = port;
+    snprintf(node_host, sizeof(node_host), "%s", host);
 
     /* Connect to server */
-    ctx = connectToServer(host, port, ssl_config);
+    ctx = connectToServer(node_host, node_port, ssl_config);
     if (ctx == NULL) {
         return -1;
     }
-    initThreadClientCtx(global_fuzz_flags);
+    initThreadClientCtx(global_fuzz_flags, slot);
     logMessage(LOG_DEBUG, "[Thread %d] Starting fuzzing session (max %d commands)...", thread_id, commands_num);
 
     /* Main fuzzing loop - send commands one by one */
     while (commands_sent < commands_num && !global_abort_all_threads) {
         /* Send a command and get its reply */
-        CommandResult result = sendCommandAndGetReply(ctx);
+        CommandResult result = sendCommandAndGetReply(ctx, slot, node_host, sizeof(node_host), &node_port);
 
         if (result != CMD_SUCCESS) {
-            if (result == CMD_DISCONNECTED) {
-                /* Connection closed by server, try to reconnect */
+            if (result == CMD_DISCONNECTED || result == CMD_MOVED) {
+                /* Connection closed by server or slot moved, (re)connect to the slot's node */
                 valkeyFree(ctx);
-                ctx = reconnectWithBackoff(host, port, ssl_config);
+                ctx = reconnectWithBackoff(node_host, node_port, ssl_config);
                 if (ctx == NULL) {
                     return -1;
                 }
@@ -633,7 +653,7 @@ static void *threadConnectAndFuzz(void *arg) {
     /* Set the thread-local error list to the one in ThreadData */
     thread_error_list = &data->error_list;
 
-    int result = connectAndFuzz(data->host, data->port, data->commands_num, data->ssl_config);
+    int result = connectAndFuzz(data->host, data->port, data->slot, data->commands_num, data->ssl_config);
 
     return (void *)(intptr_t)result;
 }
@@ -661,7 +681,7 @@ static void printFinalStatistics(void) {
 
 /* Run client fuzzing sessions using threads with optional TLS support
  * ssl_config can be NULL to disable TLS */
-static int runClients(const char *host, int port, int commands_num, int clients_num, cliSSLconfig *ssl_config) {
+static int runClients(int node_count, const char **hosts, const int *ports, const int *slots, int commands_num, int clients_num, cliSSLconfig *ssl_config) {
     global_abort_all_threads = 0;
 
     int commands_per_client = commands_num / clients_num;
@@ -681,8 +701,10 @@ static int runClients(const char *host, int port, int commands_num, int clients_
 
     /* Create threads */
     for (int i = 0; i < clients_num; i++) {
-        thread_data[i].host = host;
-        thread_data[i].port = port;
+        /* Spread the clients over the nodes */
+        thread_data[i].host = hosts[i % node_count];
+        thread_data[i].port = ports[i % node_count];
+        thread_data[i].slot = slots[i % node_count];
         thread_data[i].commands_num = commands_per_client;
         thread_data[i].thread_id = i + 1;
         thread_data[i].ssl_config = ssl_config;
@@ -727,8 +749,9 @@ static int runClients(const char *host, int port, int commands_num, int clients_
 }
 
 /* Run fuzzer clients with specified parameters
- * This function is called by valkey-benchmark when fuzz mode is enabled */
-int runFuzzerClients(const char *host, int port, int commands_num, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags) {
+ * This function is called by valkey-benchmark when fuzz mode is enabled.
+ * In cluster mode it gets every node and one slot owned by each node. */
+int runFuzzerClients(const char *host, int port, int commands_num, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots) {
     /* Set log level from parameter */
     if (log_level) {
         if (strcmp(log_level, "none") == 0) {
@@ -769,8 +792,15 @@ int runFuzzerClients(const char *host, int port, int commands_num, int clients_n
     }
     valkeyFree(ctx);
 
-    /* Run fuzzing clients */
-    int result = runClients(host, port, commands_num, clients_num, ssl_config);
+    /* Run fuzzing clients, all on the given server in standalone mode */
+    int no_slot = -1;
+    if (node_count == 0) {
+        node_count = 1;
+        node_hosts = &host;
+        node_ports = &port;
+        node_slots = &no_slot;
+    }
+    int result = runClients(node_count, node_hosts, node_ports, node_slots, commands_num, clients_num, ssl_config);
 
     printFinalStatistics();
     cleanupFuzzer();
