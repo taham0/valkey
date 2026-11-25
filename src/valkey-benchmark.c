@@ -143,7 +143,8 @@ static struct config {
     int cluster_mode;
     int fuzz_mode; /* Boolean flag to enable fuzzing */
     const char *fuzz_log_level;
-    int fuzz_flags; /* Bit flags for fuzzing modes */
+    int fuzz_flags;          /* Bit flags for fuzzing modes */
+    unsigned long long seed; /* --seed value (default based on time), also seeds --fuzz */
     readFromReplica read_from_replica;
     int cluster_node_count;
     struct clusterNode **cluster_nodes;
@@ -272,7 +273,7 @@ static void freeServerConfig(serverConfig *cfg);
 static int fetchClusterSlotsConfiguration(client c);
 static void updateClusterSlotsConfiguration(void);
 static long long showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData);
-int runFuzzerClients(const char *host, int port, int max_commands, int parallel_clients, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots);
+int runFuzzerClients(const char *host, int port, int max_commands, int duration, int parallel_clients, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots);
 static int parseCommandTemplate(int argc, char **argv);
 
 /* Dict callbacks */
@@ -1915,9 +1916,9 @@ int parseOptions(int argc, char **argv) {
                             "We now immediately exit on error to avoid false results.\n");
         } else if (!strcmp(argv[i], "--seed")) {
             if (lastarg) goto invalid;
-            int rand_seed = atoi(argv[++i]);
-            srandom(rand_seed);
-            init_genrand64(rand_seed);
+            config.seed = strtoull(argv[++i], NULL, 10);
+            srandom(config.seed);
+            init_genrand64(config.seed);
         } else if (!strcmp(argv[i], "-t")) {
             if (lastarg) goto invalid;
             /* We get the list of tests to run as a string in the form
@@ -2191,6 +2192,9 @@ usage:
         "                    With --threads, per-thread streams are seeded\n"
         "                    deterministically but their order of first use\n"
         "                    depends on thread scheduling.\n"
+        "                    With --fuzz, each client derives its commands from the\n"
+        "                    seed and its index, and the seed is printed, so the same\n"
+        "                    seed and -c replay the same commands.\n"
         "                    Default seed is based on time.\n"
         " --num-functions <num>\n"
         "                    Sets the number of functions present in the Lua lib that is\n"
@@ -2208,6 +2212,10 @@ usage:
         " --fuzz             Enable fuzzy mode to generate random commands. WARNING: Recommended for testing only, not for use with production data.\n"
         "                    With --cluster, the clients are spread over all primaries and\n"
         "                    each client keeps its keys in a slot owned by its node.\n"
+        "                    The run ends with a \"Fuzz outcome\" line. The exit code is\n"
+        "                    0 clean, 1 setup error, 2 malformed reply, 3 server\n"
+        "                    unreachable, 4 server hang (every client timed out) or\n"
+        "                    5 some clients timed out.\n"
         " --fuzz-mode <modes> Set fuzzing modes (comma-separated): malformed-commands, config-commands.\n"
         "                    malformed-commands: Generates also malformed commands.\n"
         "                    config-commands: Allows CONFIG SET commands.\n"
@@ -2438,6 +2446,7 @@ int main(int argc, char **argv) {
     config.fuzz_mode = 0;
     config.fuzz_log_level = "info";
     config.fuzz_flags = 0;
+    config.seed = (unsigned long long)ustime() ^ getpid();
     config.rps = 0;
     config.read_from_replica = FROM_PRIMARY_ONLY;
     config.cluster_node_count = 0;
@@ -2696,7 +2705,10 @@ int main(int argc, char **argv) {
     }
 
     if (config.fuzz_mode) {
-        /* In cluster mode, pass every node and a random slot it owns */
+        /* In cluster mode, pass every node and a random slot it owns. The slots come
+         * from the fuzz seed, and the nodes are in CLUSTER SLOTS order, so a replay on
+         * the same slot layout uses the same nodes and slots. */
+        srandom(config.seed);
         int node_count = config.cluster_mode ? config.cluster_node_count : 0;
         const char **node_hosts = zmalloc(sizeof(char *) * node_count);
         int *node_ports = zmalloc(sizeof(int) * node_count);
@@ -2711,12 +2723,14 @@ int main(int argc, char **argv) {
             config.conn_info.hostip,
             config.conn_info.hostport,
             config.requests,
+            config.duration,
             config.numclients,
             config.cluster_mode,
             config.keyspacelen,
             config.tls ? &config.sslconfig : NULL,
             config.fuzz_log_level,
             config.fuzz_flags,
+            config.seed,
             node_count,
             node_hosts,
             node_ports,

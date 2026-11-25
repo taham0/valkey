@@ -39,4 +39,46 @@ tags {"slow"} {
             }
         }
     }
+
+    # Run the fuzzer and return its output. Check that the "Fuzz outcome" line
+    # and the exit code agree.
+    proc run_fuzzer {args} {
+        set code 0
+        if {[catch {exec $::VALKEY_BENCHMARK_BIN --fuzz {*}$args 2>@1} output opts]} {
+            set code [lindex [dict get $opts -errorcode] 2]
+        }
+        assert_match "*Fuzz outcome: * (exit code $code)*" $output
+        return $output
+    }
+
+    start_server {tags {"external:skip"}} {
+        start_server {} {
+            test {FUZZ valkey-benchmark prints a seed that replays the run} {
+                # Run once without --seed, then replay the printed seed on another
+                # server. With one client the commands are the same, apart from
+                # unix-time arguments, which are relative to the current time.
+                set args {-c 1 -n 500 --fuzz-loglevel debug}
+                set out1 [run_fuzzer -p [srv -1 port] {*}$args]
+                assert {[regexp {Fuzz seed: (\d+)} $out1 -> seed]}
+                set out2 [run_fuzzer -p [srv 0 port] {*}$args --seed $seed]
+                assert_match "*Fuzz seed: $seed*" $out2
+                foreach i {1 2} {
+                    set sent [regexp -all -inline -line {send Command: .*$} [set out$i]]
+                    set sent$i [regsub -all {\m\d{10}\M} $sent T]
+                }
+                assert_morethan [llength $sent1] 250
+                assert_equal $sent1 $sent2
+            }
+
+            test {FUZZ valkey-benchmark stops after --duration} {
+                set start [clock milliseconds]
+                set output [run_fuzzer -p [srv 0 port] -c 4 --duration 5]
+                set elapsed [expr {[clock milliseconds] - $start}]
+                assert_match "*Running fuzzer with 4 clients for 5 seconds*" $output
+                # A client can wait up to 15 seconds for one reply before it gives up.
+                assert_morethan_equal $elapsed 5000
+                assert_lessthan $elapsed 25000
+            }
+        }
+    }
 }
