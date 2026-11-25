@@ -2,7 +2,7 @@ set ::global_overrides {}
 set ::tags {}
 set ::valgrind_errors {}
 # Tags that are only allowed at the top level (not in nested blocks)
-set ::toplevel_only_tags {large-memory needs:other-server compatible-redis network}
+set ::toplevel_only_tags {large-memory fuzz-soak needs:other-server compatible-redis network}
 
 proc start_server_error {executable config_file error} {
     set err {}
@@ -273,6 +273,11 @@ proc tags_acceptable {tags err_return} {
 
     if {!$::large_memory && [lsearch -exact $tags "large-memory"] >= 0} {
         set err "large memory flag not provided"
+        return 0
+    }
+
+    if {!$::fuzz_soak && [lsearch -exact $tags "fuzz-soak"] >= 0} {
+        set err "fuzz soak flag not provided"
         return 0
     }
 

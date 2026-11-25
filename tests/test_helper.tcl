@@ -93,6 +93,11 @@ set ::cluster_mode 0
 set ::ignoreencoding 0
 set ::ignoredigest 0
 set ::large_memory 0
+set ::fuzz_soak 0
+set ::fuzz_duration 60
+set ::fuzz_mode default
+set ::fuzz_setup standalone
+set ::fuzz_seed {}
 set ::log_req_res 0
 set ::force_resp3 0
 set ::solo_tests_count 0
@@ -346,6 +351,7 @@ proc cleanup {} {
     catch {exec rm -rf {*}[glob tests/tmp/server*.*]}
     catch {exec rm -rf {*}[glob tests/tmp/*.acl.*]}
     catch {exec rm -rf {*}[glob tests/tmp/rdb-slot-import-*]}
+    catch {exec rm -rf {*}[glob tests/tmp/fuzz-soak.*]}
     if {!$::quiet} {puts "OK"}
 }
 
@@ -795,6 +801,14 @@ proc print_help_screen {} {
         "--ignore-encoding  Don't validate object encoding."
         "--ignore-digest    Don't use debug digest validations."
         "--large-memory     Run tests using over 100mb."
+        "--fuzz-soak        Run the long valkey-benchmark fuzzer test (unit/fuzz-soak)."
+        "--fuzz-duration <sec>"
+        "                   How long the fuzz-soak test runs (default 60)."
+        "--fuzz-mode <mode> Fuzz mode for the fuzz-soak test: default, malformed-commands"
+        "                   or config-commands."
+        "--fuzz-setup <setup>"
+        "                   standalone (default), or cluster for 3 primaries."
+        "--fuzz-seed <seed> Replay a fuzz-soak run with the seed it printed."
         "--debug-defrag     Indicate the test is running against server compiled with"
         "                   DEBUG_FORCE_DEFRAG option."
         "--help             Print this help screen."
@@ -812,7 +826,7 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
             } else {
                 # Validate that allowtags only use top-level tags
                 if {[lsearch -exact $::toplevel_only_tags $tag] < 0} {
-                    puts "Error: --tags allowlist can only use top-level-only tags: large-memory, needs:other-server, compatible-redis, network"
+                    puts "Error: --tags allowlist can only use top-level-only tags: [join $::toplevel_only_tags {, }]"
                     puts "Invalid tag: $tag"
                     exit 1
                 }
@@ -958,6 +972,20 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
         set ::cluster_mode 1
     } elseif {$opt eq {--large-memory}} {
         set ::large_memory 1
+    } elseif {$opt eq {--fuzz-soak}} {
+        set ::fuzz_soak 1
+    } elseif {$opt eq {--fuzz-duration}} {
+        set ::fuzz_duration $arg
+        incr j
+    } elseif {$opt eq {--fuzz-mode}} {
+        set ::fuzz_mode $arg
+        incr j
+    } elseif {$opt eq {--fuzz-setup}} {
+        set ::fuzz_setup $arg
+        incr j
+    } elseif {$opt eq {--fuzz-seed}} {
+        set ::fuzz_seed $arg
+        incr j
     } elseif {$opt eq {--ignore-encoding}} {
         set ::ignoreencoding 1
     } elseif {$opt eq {--ignore-digest}} {
@@ -971,6 +999,13 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
         puts "Wrong argument: $opt"
         exit 1
     }
+}
+
+# The fuzz-soak test runs one command for the whole --fuzz-duration, so the test
+# timeout, which counts time without progress, has to be longer than that. A client
+# can still wait for a reply after the deadline, so leave an hour more.
+if {$::fuzz_soak && [string is integer -strict $::fuzz_duration]} {
+    set ::timeout [expr {max($::timeout, $::fuzz_duration + 3600)}]
 }
 
 set filtered_tests {}
