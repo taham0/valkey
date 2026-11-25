@@ -273,7 +273,7 @@ static void freeServerConfig(serverConfig *cfg);
 static int fetchClusterSlotsConfiguration(client c);
 static void updateClusterSlotsConfiguration(void);
 static long long showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData);
-int runFuzzerClients(const char *host, int port, int max_commands, int parallel_clients, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots);
+int runFuzzerClients(const char *host, int port, int max_commands, int duration, int parallel_clients, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots);
 static int parseCommandTemplate(int argc, char **argv);
 
 /* Dict callbacks */
@@ -2719,6 +2719,7 @@ int main(int argc, char **argv) {
             config.conn_info.hostip,
             config.conn_info.hostport,
             config.requests,
+            config.duration,
             config.numclients,
             config.cluster_mode,
             config.keyspacelen,

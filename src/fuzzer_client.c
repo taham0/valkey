@@ -81,6 +81,7 @@ typedef struct {
     int port;
     int slot; /* Slot of the client's keys in cluster mode, -1 otherwise */
     int commands_num;
+    long long deadline_us; /* With --duration, stop at this monotonic time, 0 otherwise */
     int thread_id;
     ErrorList error_list;     /* Thread-local error list */
     cliSSLconfig *ssl_config; /* TLS configuration (NULL if TLS disabled) */
@@ -88,6 +89,13 @@ typedef struct {
 
 static __thread int thread_id = 0;                   /* Thread-local ID */
 static __thread ErrorList *thread_error_list = NULL; /* Thread-local error list */
+
+/* Monotonic clock in microseconds, for --duration deadlines */
+static long long monotonicUs(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
 
 /* Function prototypes */
 static void *threadConnectAndFuzz(void *arg);
@@ -256,10 +264,15 @@ static void *progressReporterThread(void *arg) {
 
         /* Report progress */
         if (current_time - last_report_time >= 1) {
-            printf("\rProgress: %d/%d commands (%.1f%%), %.1f rps",
-                   current_commands, total_commands_num,
-                   total_commands_num > 0 ? (current_commands * 100.0) / total_commands_num : 0,
-                   commands_per_sec);
+            if (total_commands_num > 0) {
+                printf("\rProgress: %d/%d commands (%.1f%%), %.1f rps",
+                       current_commands, total_commands_num,
+                       (current_commands * 100.0) / total_commands_num, commands_per_sec);
+            } else {
+                /* With --duration there is no command total */
+                printf("\rProgress: %d commands in %.0f s, %.1f rps",
+                       current_commands, elapsed_time, commands_per_sec);
+            }
             fflush(stdout);
             last_report_time = current_time;
         }
@@ -594,9 +607,11 @@ static CommandResult sendCommandAndGetReply(valkeyContext *ctx, int slot, char *
 }
 
 /* Connect and fuzz a Valkey server with optional TLS support
+ * Sends commands_num commands, or with a non-zero deadline_us, sends
+ * commands until that monotonic time.
  * Returns 0 on success, non-zero on error
  * ssl_config can be NULL to disable TLS */
-int connectAndFuzz(const char *host, int port, int slot, int commands_num, cliSSLconfig *ssl_config) {
+int connectAndFuzz(const char *host, int port, int slot, int commands_num, long long deadline_us, cliSSLconfig *ssl_config) {
     valkeyContext *ctx;
     int commands_sent = 0;
     char node_host[256]; /* Node to talk to, updated when the client's slot moves */
@@ -609,10 +624,11 @@ int connectAndFuzz(const char *host, int port, int slot, int commands_num, cliSS
         return -1;
     }
     initThreadClientCtx(global_fuzz_flags, thread_id, slot);
-    logMessage(LOG_DEBUG, "[Thread %d] Starting fuzzing session (max %d commands)...", thread_id, commands_num);
+    logMessage(LOG_DEBUG, "[Thread %d] Starting fuzzing session...", thread_id);
 
     /* Main fuzzing loop - send commands one by one */
-    while (commands_sent < commands_num && !global_abort_all_threads) {
+    while (!global_abort_all_threads &&
+           (deadline_us ? monotonicUs() < deadline_us : commands_sent < commands_num)) {
         /* Send a command and get its reply */
         CommandResult result = sendCommandAndGetReply(ctx, slot, node_host, sizeof(node_host), &node_port);
 
@@ -657,7 +673,7 @@ static void *threadConnectAndFuzz(void *arg) {
     /* Set the thread-local error list to the one in ThreadData */
     thread_error_list = &data->error_list;
 
-    int result = connectAndFuzz(data->host, data->port, data->slot, data->commands_num, data->ssl_config);
+    int result = connectAndFuzz(data->host, data->port, data->slot, data->commands_num, data->deadline_us, data->ssl_config);
 
     return (void *)(intptr_t)result;
 }
@@ -684,8 +700,10 @@ static void printFinalStatistics(void) {
 }
 
 /* Run client fuzzing sessions using threads with optional TLS support
+ * With duration > 0, the clients run for that many seconds instead of
+ * sending commands_num commands.
  * ssl_config can be NULL to disable TLS */
-static int runClients(int node_count, const char **hosts, const int *ports, const int *slots, int commands_num, int clients_num, cliSSLconfig *ssl_config) {
+static int runClients(int node_count, const char **hosts, const int *ports, const int *slots, int commands_num, int duration, int clients_num, cliSSLconfig *ssl_config) {
     global_abort_all_threads = 0;
 
     int commands_per_client = commands_num / clients_num;
@@ -693,11 +711,18 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
         commands_per_client = 1;
     }
 
-    printf("Running fuzzer with %d clients, %d commands per client (%d total commands)%s\n",
-           clients_num, commands_per_client, commands_num, ssl_config ? " (TLS)" : "");
+    long long deadline_us = 0;
+    if (duration > 0) {
+        deadline_us = monotonicUs() + duration * 1000000LL;
+        printf("Running fuzzer with %d clients for %d seconds%s\n",
+               clients_num, duration, ssl_config ? " (TLS)" : "");
+    } else {
+        printf("Running fuzzer with %d clients, %d commands per client (%d total commands)%s\n",
+               clients_num, commands_per_client, commands_num, ssl_config ? " (TLS)" : "");
+    }
 
     /* Start progress reporting for all threads combined */
-    startProgressReporting(commands_num);
+    startProgressReporting(duration > 0 ? 0 : commands_num);
 
     pthread_t *threads = malloc(sizeof(pthread_t) * clients_num);
     ThreadData *thread_data = malloc(sizeof(ThreadData) * clients_num);
@@ -710,6 +735,7 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
         thread_data[i].port = ports[i % node_count];
         thread_data[i].slot = slots[i % node_count];
         thread_data[i].commands_num = commands_per_client;
+        thread_data[i].deadline_us = deadline_us;
         thread_data[i].thread_id = i + 1;
         thread_data[i].ssl_config = ssl_config;
         initErrorList(&thread_data[i].error_list);
@@ -755,7 +781,7 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
 /* Run fuzzer clients with specified parameters
  * This function is called by valkey-benchmark when fuzz mode is enabled.
  * In cluster mode it gets every node and one slot owned by each node. */
-int runFuzzerClients(const char *host, int port, int commands_num, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots) {
+int runFuzzerClients(const char *host, int port, int commands_num, int duration, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots) {
     /* Set log level from parameter */
     if (log_level) {
         if (strcmp(log_level, "none") == 0) {
@@ -808,7 +834,7 @@ int runFuzzerClients(const char *host, int port, int commands_num, int clients_n
         node_ports = &port;
         node_slots = &no_slot;
     }
-    int result = runClients(node_count, node_hosts, node_ports, node_slots, commands_num, clients_num, ssl_config);
+    int result = runClients(node_count, node_hosts, node_ports, node_slots, commands_num, duration, clients_num, ssl_config);
 
     printFinalStatistics();
     cleanupFuzzer();
