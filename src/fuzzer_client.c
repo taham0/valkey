@@ -83,6 +83,7 @@ typedef struct {
     int commands_num;
     long long deadline_us; /* With --duration, stop at this monotonic time, 0 otherwise */
     int thread_id;
+    int started;              /* Whether the thread was created */
     ErrorList error_list;     /* Thread-local error list */
     cliSSLconfig *ssl_config; /* TLS configuration (NULL if TLS disabled) */
 } ThreadData;
@@ -431,6 +432,23 @@ typedef enum {
     CMD_MOVED = 4         /* The client's slot moved to another node */
 } CommandResult;
 
+/* How a client's fuzzing session ended */
+typedef enum {
+    CLIENT_DONE = 0,        /* Finished, or stopped after another client got a malformed reply */
+    CLIENT_UNREACHABLE = 1, /* Could not connect or reconnect to its node */
+    CLIENT_TIMED_OUT = 2    /* A command got no reply within COMMAND_TIMEOUT_SEC */
+} ClientResult;
+
+/* Outcome of a fuzzing run, printed on the last line and used as the exit code */
+typedef enum {
+    FUZZ_CLEAN = 0,           /* Every client finished */
+    FUZZ_SETUP_ERROR = 1,     /* Could not connect or start at all */
+    FUZZ_MALFORMED_REPLY = 2, /* The server sent invalid RESP */
+    FUZZ_UNREACHABLE = 3,     /* Clients lost the connection and could not reconnect */
+    FUZZ_HANG = 4,            /* Every client timed out */
+    FUZZ_SOME_TIMED_OUT = 5   /* Some clients timed out, the others finished */
+} FuzzOutcome;
+
 static void handleMalformedReply(valkeyContext *ctx, FuzzerCommand *cmd) {
     /* Protocol error (malformed reply) - ABORT ALL THREADS */
     sds cmd_str = formatCommandString(cmd);
@@ -609,19 +627,21 @@ static CommandResult sendCommandAndGetReply(valkeyContext *ctx, int slot, char *
 /* Connect and fuzz a Valkey server with optional TLS support
  * Sends commands_num commands, or with a non-zero deadline_us, sends
  * commands until that monotonic time.
- * Returns 0 on success, non-zero on error
+ * Returns how the session ended.
  * ssl_config can be NULL to disable TLS */
-int connectAndFuzz(const char *host, int port, int slot, int commands_num, long long deadline_us, cliSSLconfig *ssl_config) {
+ClientResult connectAndFuzz(const char *host, int port, int slot, int commands_num, long long deadline_us, cliSSLconfig *ssl_config) {
     valkeyContext *ctx;
     int commands_sent = 0;
     char node_host[256]; /* Node to talk to, updated when the client's slot moves */
     int node_port = port;
     snprintf(node_host, sizeof(node_host), "%s", host);
 
+    ClientResult client_result = CLIENT_DONE;
+
     /* Connect to server */
     ctx = connectToServer(node_host, node_port, ssl_config);
     if (ctx == NULL) {
-        return -1;
+        return CLIENT_UNREACHABLE;
     }
     initThreadClientCtx(global_fuzz_flags, thread_id, slot);
     logMessage(LOG_DEBUG, "[Thread %d] Starting fuzzing session...", thread_id);
@@ -638,7 +658,8 @@ int connectAndFuzz(const char *host, int port, int slot, int commands_num, long 
                 valkeyFree(ctx);
                 ctx = reconnectWithBackoff(node_host, node_port, ssl_config);
                 if (ctx == NULL) {
-                    return -1;
+                    client_result = CLIENT_UNREACHABLE;
+                    break;
                 }
                 /* Reset client fuzzer context on successful reconnection */
                 resetClientFuzzCtx();
@@ -646,9 +667,8 @@ int connectAndFuzz(const char *host, int port, int slot, int commands_num, long 
             } else if (result == CMD_TIMEOUT) {
                 /* Timeout error - abort thread immediately */
                 logMessage(LOG_ERROR, "[Thread %d] Thread aborted due to timeout error", thread_id);
-                /* Clean up and exit */
-                if (ctx) valkeyFree(ctx);
-                return -1;
+                client_result = CLIENT_TIMED_OUT;
+                break;
             } else {
                 /* Other error, but continue with next command */
                 logMessage(LOG_INFO, "[Thread %d] Error processing command, continuing with next one", thread_id);
@@ -662,7 +682,7 @@ int connectAndFuzz(const char *host, int port, int slot, int commands_num, long 
     /* Clean up */
     if (ctx) valkeyFree(ctx);
     freeClientCtx();
-    return 0;
+    return client_result;
 }
 
 /* Thread function for parallel fuzzing */
@@ -699,11 +719,21 @@ static void printFinalStatistics(void) {
     }
 }
 
+/* Print the outcome of the run as its last line and return it as the exit code */
+static int reportOutcome(FuzzOutcome outcome) {
+    static const char *names[] = {"clean", "setup error", "malformed reply", "server unreachable",
+                                  "server hang", "some clients timed out"};
+    printf("Fuzz outcome: %s (exit code %d)\n", names[outcome], outcome);
+    fflush(stdout);
+    return outcome;
+}
+
 /* Run client fuzzing sessions using threads with optional TLS support
  * With duration > 0, the clients run for that many seconds instead of
  * sending commands_num commands.
+ * Returns the outcome of the run.
  * ssl_config can be NULL to disable TLS */
-static int runClients(int node_count, const char **hosts, const int *ports, const int *slots, int commands_num, int duration, int clients_num, cliSSLconfig *ssl_config) {
+static FuzzOutcome runClients(int node_count, const char **hosts, const int *ports, const int *slots, int commands_num, int duration, int clients_num, cliSSLconfig *ssl_config) {
     global_abort_all_threads = 0;
 
     int commands_per_client = commands_num / clients_num;
@@ -726,7 +756,7 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
 
     pthread_t *threads = malloc(sizeof(pthread_t) * clients_num);
     ThreadData *thread_data = malloc(sizeof(ThreadData) * clients_num);
-    int failed = 0;
+    int started = 0, thread_errors = 0, unreachable = 0, timed_out = 0;
 
     /* Create threads */
     for (int i = 0; i < clients_num; i++) {
@@ -741,26 +771,29 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
         initErrorList(&thread_data[i].error_list);
 
         int ret = pthread_create(&threads[i], NULL, threadConnectAndFuzz, &thread_data[i]);
+        thread_data[i].started = (ret == 0);
         if (ret != 0) {
             logMessage(LOG_ERROR, "Failed to create thread %d: %s", i + 1, strerror(ret));
-            failed++;
+            thread_errors++;
         } else {
             logMessage(LOG_DEBUG, "Thread %d started...", i + 1);
+            started++;
         }
     }
 
     /* Wait for all threads to complete and print their error lists if exist */
     for (int i = 0; i < clients_num; i++) {
-        void *thread_result;
-        int ret = pthread_join(threads[i], &thread_result);
-        if (ret != 0) {
-            logMessage(LOG_ERROR, "Failed to join thread %d: %s", i + 1, strerror(ret));
-            failed++;
-        } else {
-            int exit_code = (int)(intptr_t)thread_result;
-            logMessage(LOG_DEBUG, "Thread %d completed with exit code %d", i + 1, exit_code);
-            if (exit_code != 0) {
-                failed++;
+        if (thread_data[i].started) {
+            void *thread_result;
+            int ret = pthread_join(threads[i], &thread_result);
+            if (ret != 0) {
+                logMessage(LOG_ERROR, "Failed to join thread %d: %s", i + 1, strerror(ret));
+                thread_errors++;
+            } else {
+                ClientResult result = (ClientResult)(intptr_t)thread_result;
+                logMessage(LOG_DEBUG, "Thread %d completed with result %d", i + 1, result);
+                if (result == CLIENT_UNREACHABLE) unreachable++;
+                if (result == CLIENT_TIMED_OUT) timed_out++;
             }
         }
         printErrors(thread_data[i].thread_id, &thread_data[i].error_list);
@@ -769,18 +802,25 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
 
     stopProgressReporting();
 
-    logMessage(LOG_INFO, "All client threads completed. %d succeeded, %d failed.",
-               clients_num - failed, failed);
+    logMessage(LOG_INFO, "All client threads completed. %d finished, %d unreachable, %d timed out, %d thread errors.",
+               clients_num - thread_errors - unreachable - timed_out, unreachable, timed_out, thread_errors);
 
     free(threads);
     free(thread_data);
 
-    return failed;
+    /* A server bug wins over a client-side problem, so check those first */
+    if (atomic_load(&global_malformed_replies) > 0) return FUZZ_MALFORMED_REPLY;
+    if (unreachable > 0) return FUZZ_UNREACHABLE;
+    if (timed_out > 0 && timed_out == started) return FUZZ_HANG;
+    if (thread_errors > 0) return FUZZ_SETUP_ERROR;
+    if (timed_out > 0) return FUZZ_SOME_TIMED_OUT;
+    return FUZZ_CLEAN;
 }
 
 /* Run fuzzer clients with specified parameters
  * This function is called by valkey-benchmark when fuzz mode is enabled.
- * In cluster mode it gets every node and one slot owned by each node. */
+ * In cluster mode it gets every node and one slot owned by each node.
+ * Returns a FuzzOutcome, which valkey-benchmark uses as its exit code. */
 int runFuzzerClients(const char *host, int port, int commands_num, int duration, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots) {
     /* Set log level from parameter */
     if (log_level) {
@@ -801,7 +841,7 @@ int runFuzzerClients(const char *host, int port, int commands_num, int duration,
     if (clients_num > MAX_CLIENTS_NUM) {
         logMessage(LOG_ERROR, "Too many parallel clients requested (%d). Maximum is %d.",
                    clients_num, MAX_CLIENTS_NUM);
-        return 1;
+        return reportOutcome(FUZZ_SETUP_ERROR);
     }
 
     global_fuzz_flags = fuzz_flags;
@@ -813,12 +853,12 @@ int runFuzzerClients(const char *host, int port, int commands_num, int duration,
     ctx = connectToServer(host, port, ssl_config);
     if (ctx == NULL) {
         logMessage(LOG_ERROR, "Failed to connect to server.");
-        return -1;
+        return reportOutcome(FUZZ_SETUP_ERROR);
     }
     if (initFuzzer(ctx, num_keys, cluster_mode, global_fuzz_flags, seed) == -1) {
         valkeyFree(ctx);
         logMessage(LOG_ERROR, "Failed to init fuzzer.");
-        return -1;
+        return reportOutcome(FUZZ_SETUP_ERROR);
     }
     valkeyFree(ctx);
 
@@ -834,10 +874,10 @@ int runFuzzerClients(const char *host, int port, int commands_num, int duration,
         node_ports = &port;
         node_slots = &no_slot;
     }
-    int result = runClients(node_count, node_hosts, node_ports, node_slots, commands_num, duration, clients_num, ssl_config);
+    FuzzOutcome outcome = runClients(node_count, node_hosts, node_ports, node_slots, commands_num, duration, clients_num, ssl_config);
 
     printFinalStatistics();
     cleanupFuzzer();
 
-    return result;
+    return reportOutcome(outcome);
 }
