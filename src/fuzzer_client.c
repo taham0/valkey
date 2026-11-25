@@ -111,6 +111,9 @@ static void logMessage(LogLevel level, const char *format, ...) {
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
 
+    /* Hold the stream lock so lines from different client threads don't interleave. */
+    flockfile(output);
+
     /* Print timestamp prefix directly */
     fprintf(output, "[%02d:%02d:%02d] [%s] ",
             tm->tm_hour, tm->tm_min, tm->tm_sec, level_strs[level]);
@@ -124,6 +127,7 @@ static void logMessage(LogLevel level, const char *format, ...) {
     /* Add newline if not present */
     fputc('\n', output);
     fflush(output);
+    funlockfile(output);
 }
 
 static void initErrorList(ErrorList *list) {
@@ -565,7 +569,7 @@ static CommandResult sendCommandAndGetReply(valkeyContext *ctx, int slot, char *
 
     FuzzerCommand *cmd = generateCmd();
     if (current_log_level >= LOG_DEBUG) {
-        logMessage(LOG_DEBUG, "send Command: %s", printCommand(cmd));
+        logMessage(LOG_DEBUG, "[Thread %d] send Command: %s", thread_id, printCommand(cmd));
     }
 
     /* Send command */
@@ -604,7 +608,7 @@ int connectAndFuzz(const char *host, int port, int slot, int commands_num, cliSS
     if (ctx == NULL) {
         return -1;
     }
-    initThreadClientCtx(global_fuzz_flags, slot);
+    initThreadClientCtx(global_fuzz_flags, thread_id, slot);
     logMessage(LOG_DEBUG, "[Thread %d] Starting fuzzing session (max %d commands)...", thread_id, commands_num);
 
     /* Main fuzzing loop - send commands one by one */
@@ -751,7 +755,7 @@ static int runClients(int node_count, const char **hosts, const int *ports, cons
 /* Run fuzzer clients with specified parameters
  * This function is called by valkey-benchmark when fuzz mode is enabled.
  * In cluster mode it gets every node and one slot owned by each node. */
-int runFuzzerClients(const char *host, int port, int commands_num, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots) {
+int runFuzzerClients(const char *host, int port, int commands_num, int clients_num, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, uint64_t seed, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots) {
     /* Set log level from parameter */
     if (log_level) {
         if (strcmp(log_level, "none") == 0) {
@@ -785,12 +789,16 @@ int runFuzzerClients(const char *host, int port, int commands_num, int clients_n
         logMessage(LOG_ERROR, "Failed to connect to server.");
         return -1;
     }
-    if (initFuzzer(ctx, num_keys, cluster_mode, global_fuzz_flags) == -1) {
+    if (initFuzzer(ctx, num_keys, cluster_mode, global_fuzz_flags, seed) == -1) {
         valkeyFree(ctx);
         logMessage(LOG_ERROR, "Failed to init fuzzer.");
         return -1;
     }
     valkeyFree(ctx);
+
+    /* Always print the seed so a failing run can be replayed with --seed. */
+    printf("Fuzz seed: %llu\n", (unsigned long long)seed);
+    fflush(stdout);
 
     /* Run fuzzing clients, all on the given server in standalone mode */
     int no_slot = -1;
