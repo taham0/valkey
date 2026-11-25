@@ -31,6 +31,7 @@ match different external server configurations. All options are listed by
 | `--ignore-digest`          | Skip key value digest validations. |
 | `--cluster-mode`           | Run in strict Valkey Cluster compatibility mode. |
 | `--large-memory`           | Enables tests that consume more than 100MB |
+| `--fuzz-soak`              | Enables the long fuzzer test, see `tests/unit/fuzz-soak.tcl` |
 | `--tls`                    | Run tests with TLS. See below. |
 | `--tls-module`             | Run tests with TLS, when TLS support is built as a module. |
 | `--other-server-path PATH` | Run compatibility tests with another server executable. |
@@ -84,7 +85,7 @@ Tags can be applied in different context levels:
 * `tags` context that bundles several tests together
 * A single test context.
 
-Some tags are restricted to top-level use only. These tags are `large-memory`, `needs:other-server`, `compatible-redis` and `network`.
+Some tags are restricted to top-level use only. These tags are `large-memory`, `fuzz-soak`, `needs:other-server`, `compatible-redis` and `network`.
 
 The following compatibility and capability tags are currently used:
 
@@ -94,6 +95,7 @@ The following compatibility and capability tags are currently used:
 | `cluster`                 | Uses cluster with multiple nodes. |
 | `cluster:skip`            | Not compatible with `--cluster-mode`. |
 | `large-memory`            | Test that requires more than 100MB |
+| `fuzz-soak`               | Long fuzzer test that only runs with `--fuzz-soak` |
 | `tls`                     | Uses TLS. |
 | `tls:skip`                | Not compatible with `--tls`. |
 | `ipv6`                    | Uses IPv6. |
