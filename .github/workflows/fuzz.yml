@@ -1,0 +1,137 @@
+name: Fuzz
+
+# Runs the valkey-benchmark fuzzer (tests/unit/fuzz-soak.tcl) for a fixed time in
+# every setup, fuzz mode and build. A job fails on a crash, an assertion, a
+# sanitizer report, a malformed reply, a hang, or a server that stops answering
+# PING, and then uploads the server logs, the fuzzer output, the seed, the command
+# line and the build flags.
+#
+# To replay a failed job, take its seed from the job log ("Fuzz seed: N") or from
+# fuzz-info.txt in its upload, and run the same cell with the same seed and
+# duration. Here: Run workflow with the setup, mode, build, duration and seed
+# inputs. Locally: build with the make flags in fuzz-info.txt, then
+#
+#   ./runtest --single unit/fuzz-soak --fuzz-soak --fuzz-setup <setup> \
+#       --fuzz-mode <mode> --fuzz-duration <duration> --fuzz-seed N
+#
+# Each client sends the same commands again, but the order between clients, the
+# server's own random choices and its timers can differ, so a failure that needs a
+# precise timing may take several reruns.
+
+on:
+  schedule:
+    # Not at 00:00 UTC, when daily.yml starts its jobs.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Seconds per job (empty: FUZZ_DURATION in fuzz.yml)"
+        default: ""
+      seed:
+        description: "Seed to replay (empty: a new seed per job)"
+        default: ""
+      setup:
+        description: "Server setup"
+        type: choice
+        options: [all, standalone, cluster]
+        default: all
+      mode:
+        description: "Fuzz mode"
+        type: choice
+        options: [all, default, malformed-commands, config-commands]
+        default: all
+      build:
+        description: "Build"
+        type: choice
+        options: [all, normal, asan, ubsan]
+        default: all
+
+permissions:
+  contents: read
+
+env:
+  # Seconds each job fuzzes for. The time window is still under discussion on #5567.
+  FUZZ_DURATION: 1800
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.setup }}, ${{ matrix.mode }}, ${{ matrix.build }})
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey')
+    runs-on: ubuntu-latest
+    # The build, FUZZ_DURATION, and the hour runtest allows for clients that still
+    # wait on a reply after the deadline.
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        setup: ${{ fromJSON((!inputs.setup || inputs.setup == 'all') && '["standalone", "cluster"]' || format('["{0}"]', inputs.setup)) }}
+        mode: ${{ fromJSON((!inputs.mode || inputs.mode == 'all') && '["default", "malformed-commands", "config-commands"]' || format('["{0}"]', inputs.mode)) }}
+        build: ${{ fromJSON((!inputs.build || inputs.build == 'all') && '["normal", "asan", "ubsan"]' || format('["{0}"]', inputs.build)) }}
+    env:
+      SETUP: ${{ matrix.setup }}
+      MODE: ${{ matrix.mode }}
+      BUILD: ${{ matrix.build }}
+      INPUT_DURATION: ${{ inputs.duration }}
+      INPUT_SEED: ${{ inputs.seed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install libbacktrace
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ianlancetaylor/libbacktrace
+          ref: b9e40069c0b47a722286b94eb5231f7f05c08713
+          path: libbacktrace
+      - run: cd libbacktrace && ./configure && make && sudo make install
+      - name: make
+        run: |
+          # The build flags of the matching jobs in daily.yml.
+          case "$BUILD" in
+            normal) flags=(SERVER_CFLAGS=-Werror USE_LIBBACKTRACE=yes) ;;
+            asan) flags=(OPT=-O3 SANITIZER=address SERVER_CFLAGS=-Werror USE_LIBBACKTRACE=yes) ;;
+            ubsan) flags=(OPT=-O3 SANITIZER=undefined SERVER_CFLAGS=-Werror LUA_DEBUG=yes USE_LIBBACKTRACE=yes) ;;
+            *) echo "::error::Unknown build: $BUILD"; exit 1 ;;
+          esac
+          {
+            echo "cell: setup=$SETUP mode=$MODE build=$BUILD"
+            echo "commit: $GITHUB_SHA"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "make: make ${flags[*]}"
+            echo "compiler: $(cc --version | head -n 1)"
+          } > fuzz-info.txt
+          make -j4 "${flags[@]}"
+      - name: testprep
+        run: |
+          sudo apt-get update
+          sudo apt-get install tcl8.6 tclx -y
+      - name: fuzz
+        run: |
+          duration="${INPUT_DURATION:-$FUZZ_DURATION}"
+          if [[ ! "$duration" =~ ^[0-9]+$ || ! "$INPUT_SEED" =~ ^[0-9]*$ ]]; then
+            echo "::error::duration and seed must be numbers"
+            exit 1
+          fi
+          args=(--single unit/fuzz-soak --fuzz-soak --fuzz-setup "$SETUP" --fuzz-mode "$MODE"
+                --fuzz-duration "$duration" --clients 1 --verbose --dont-clean)
+          if [ -n "$INPUT_SEED" ]; then
+            args+=(--fuzz-seed "$INPUT_SEED")
+          fi
+          echo "duration: $duration" >> fuzz-info.txt
+          echo "runtest: ./runtest ${args[*]}" >> fuzz-info.txt
+          ./runtest "${args[@]}"
+      - name: Find the seed
+        if: failure() || cancelled()
+        run: |
+          seed=$(grep -ahom1 '^Fuzz seed: [0-9]*' tests/tmp/fuzz-soak.*/output.txt || true)
+          echo "seed: ${seed#Fuzz seed: }" >> fuzz-info.txt
+      # tests/tmp has each server's log (stdout, stderr) and the fuzzer's command
+      # line and output (fuzz-soak.*/).
+      - name: Upload logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fuzz-logs-${{ matrix.setup }}-${{ matrix.mode }}-${{ matrix.build }}
+          path: |
+            fuzz-info.txt
+            tests/tmp/
