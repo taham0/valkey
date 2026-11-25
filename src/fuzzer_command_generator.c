@@ -265,6 +265,7 @@ static FuzzerCommand *allocCommand(void) {
     FuzzerCommand *cmd = zmalloc(sizeof(FuzzerCommand));
     cmd->argc = 0;
     cmd->size = 16;
+    cmd->may_block = 0;
     cmd->argv = zmalloc(sizeof(sds) * cmd->size);
     return cmd;
 }
@@ -1749,6 +1750,7 @@ void generateSingleCmd(FuzzerCommand *cmd) {
     if (client_ctx->in_subscribe_mode) {
         selectedCommand = handlePubSubCommandSelection();
     }
+    cmd->may_block = isBlockingCommand(&selectedCommand->info) && !client_ctx->in_multiexec;
 
     /* Special case CONFIG SET command */
     if (strcasecmp(selectedCommand->fullname, "CONFIG SET") == 0) {
