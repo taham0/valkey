@@ -272,7 +272,7 @@ static void freeServerConfig(serverConfig *cfg);
 static int fetchClusterSlotsConfiguration(client c);
 static void updateClusterSlotsConfiguration(void);
 static long long showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData);
-int runFuzzerClients(const char *host, int port, int max_commands, int parallel_clients, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags);
+int runFuzzerClients(const char *host, int port, int max_commands, int parallel_clients, int cluster_mode, long long num_keys, cliSSLconfig *ssl_config, const char *log_level, int fuzz_flags, int node_count, const char **node_hosts, const int *node_ports, const int *node_slots);
 static int parseCommandTemplate(int argc, char **argv);
 
 /* Dict callbacks */
@@ -2206,6 +2206,8 @@ usage:
         rdma_usage,
         " --mptcp            Enable an MPTCP connection.\n"
         " --fuzz             Enable fuzzy mode to generate random commands. WARNING: Recommended for testing only, not for use with production data.\n"
+        "                    With --cluster, the clients are spread over all primaries and\n"
+        "                    each client keeps its keys in a slot owned by its node.\n"
         " --fuzz-mode <modes> Set fuzzing modes (comma-separated): malformed-commands, config-commands.\n"
         "                    malformed-commands: Generates also malformed commands.\n"
         "                    config-commands: Allows CONFIG SET commands.\n"
@@ -2600,7 +2602,7 @@ int main(int argc, char **argv) {
         config.datasize = len;
     }
 
-    if (config.cluster_mode && !config.fuzz_mode) {
+    if (config.cluster_mode) {
         // We only include the slot placeholder {tag} if cluster mode is enabled
         tag = ":{tag}";
 
@@ -2694,7 +2696,18 @@ int main(int argc, char **argv) {
     }
 
     if (config.fuzz_mode) {
-        return runFuzzerClients(
+        /* In cluster mode, pass every node and a random slot it owns */
+        int node_count = config.cluster_mode ? config.cluster_node_count : 0;
+        const char **node_hosts = zmalloc(sizeof(char *) * node_count);
+        int *node_ports = zmalloc(sizeof(int) * node_count);
+        int *node_slots = zmalloc(sizeof(int) * node_count);
+        for (int i = 0; i < node_count; i++) {
+            clusterNode *node = config.cluster_nodes[i];
+            node_hosts[i] = node->ip;
+            node_ports[i] = node->port;
+            node_slots[i] = node->slots[random() % node->slots_count];
+        }
+        int ret = runFuzzerClients(
             config.conn_info.hostip,
             config.conn_info.hostport,
             config.requests,
@@ -2703,7 +2716,15 @@ int main(int argc, char **argv) {
             config.keyspacelen,
             config.tls ? &config.sslconfig : NULL,
             config.fuzz_log_level,
-            config.fuzz_flags);
+            config.fuzz_flags,
+            node_count,
+            node_hosts,
+            node_ports,
+            node_slots);
+        zfree(node_hosts);
+        zfree(node_ports);
+        zfree(node_slots);
+        return ret;
     }
 
     /* Run benchmark with the command sequence already parsed above. */
