@@ -1089,6 +1089,12 @@ start_server {tags {"scripting"}} {
         set _ $e
     } {*Unknown argument bad_argument*}
 
+    test {FUNCTION - test function list wrong argument with CR/LF} {
+        catch {r function list "bad\r\nargument"} e
+        assert_match {*Unknown argument bad  argument*} $e
+        assert_equal PONG [r ping]
+    }
+
     test {FUNCTION - test function list with bad argument to library name} {
         catch {r function list libraryname} e
         set _ $e
