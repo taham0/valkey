@@ -369,15 +369,26 @@ static int isServerDisconnected(valkeyContext *ctx) {
              (errno == ECONNRESET || errno == EPIPE || errno == ENOTCONN)));
 }
 
+/* Why a connection attempt failed, so the caller can tell a node that is really
+ * gone from one that accepted the connection and then closed it. The latter is
+ * a client-eviction disconnect to retry, not an unreachable server. */
+typedef enum {
+    CONNECT_OK = 0,          /* Connected and PING succeeded */
+    CONNECT_TCP_FAILED = 1,  /* The TCP connect itself failed (node is down) */
+    CONNECT_CLOSED_AFTER = 2 /* Connected, then TLS/PING failed (node closed us) */
+} ConnectResult;
+
 /* Connect to a Valkey server with optional TLS support
- * Returns a valkeyContext on success, NULL on error
+ * Returns a valkeyContext on success, NULL on error. When why is non-NULL it is
+ * set to how the attempt ended.
  * ssl_config can be NULL to disable TLS */
-static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *ssl_config) {
+static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *ssl_config, ConnectResult *why) {
     valkeyContext *ctx;
     valkeyReply *reply;
     struct timeval timeout = {1, 500000};                      /* 1.5 seconds for connection */
     struct timeval command_timeout = {COMMAND_TIMEOUT_SEC, 0}; /* Command timeout */
 
+    if (why) *why = CONNECT_TCP_FAILED;
     logMessage(LOG_DEBUG, "[thread %d] Connecting to %s:%d%s...", thread_id, host, port, ssl_config ? " (TLS)" : "");
 
     valkeyOptions options = {0};
@@ -397,6 +408,9 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
         valkeyFree(ctx);
         return NULL;
     }
+
+    /* The TCP connect succeeded; any failure past here is the node closing us. */
+    if (why) *why = CONNECT_CLOSED_AFTER;
 
     /* Set command timeout for all subsequent operations */
     valkeySetTimeout(ctx, command_timeout);
@@ -421,6 +435,7 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
         return NULL;
     }
 
+    if (why) *why = CONNECT_OK;
     logMessage(LOG_DEBUG, "[Thread %d] Connected successfully", thread_id);
     freeReplyObject(reply);
 
@@ -430,19 +445,23 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
 /* Reconnect to server with exponential backoff and optional TLS support
  * Returns new context on success, NULL on failure
  * ssl_config can be NULL to disable TLS */
-static valkeyContext *reconnectWithBackoff(const char *host, int port, cliSSLconfig *ssl_config) {
+static valkeyContext *reconnectWithBackoff(const char *host, int port, cliSSLconfig *ssl_config, int *server_reachable) {
     int attempts = 0;
     valkeyContext *ctx = NULL;
 
+    if (server_reachable) *server_reachable = 0;
     logMessage(LOG_DEBUG, "[Thread %d] Attempting to reconnect to %s:%d%s with backoff...",
                thread_id, host, port, ssl_config ? " (TLS)" : "");
 
     while (attempts < RECONNECT_MAX_ATTEMPTS) {
-        ctx = connectToServer(host, port, ssl_config);
+        ConnectResult why = CONNECT_TCP_FAILED;
+        ctx = connectToServer(host, port, ssl_config, &why);
         if (ctx) {
             logMessage(LOG_DEBUG, "[Thread %d] Successfully reconnected after %d attempts", thread_id, attempts + 1);
             return ctx;
         }
+        /* The node answered the TCP connect at least once, so it is up. */
+        if (why != CONNECT_TCP_FAILED && server_reachable) *server_reachable = 1;
 
         /* Exponential backoff */
         int delay = RECONNECT_BASE_DELAY_MS * (1 << attempts);
@@ -707,9 +726,15 @@ ClientResult connectAndFuzz(const char *host, int port, int slot, int commands_n
     ClientResult client_result = CLIENT_DONE;
 
     /* Connect to server */
-    ctx = connectToServer(node_host, node_port, ssl_config);
+    ConnectResult why = CONNECT_TCP_FAILED;
+    ctx = connectToServer(node_host, node_port, ssl_config, &why);
     if (ctx == NULL) {
-        return CLIENT_UNREACHABLE;
+        if (why == CONNECT_TCP_FAILED) return CLIENT_UNREACHABLE;
+        /* The node accepted and then closed us (e.g. eviction): it is up, so
+         * retry with backoff before deciding it is unreachable. */
+        int reachable = 0;
+        ctx = reconnectWithBackoff(node_host, node_port, ssl_config, &reachable);
+        if (ctx == NULL) return reachable ? CLIENT_DONE : CLIENT_UNREACHABLE;
     }
     initThreadClientCtx(global_fuzz_flags, thread_id, slot);
     /* Offset from the generator's seeding, then mix once so that clients with
@@ -738,9 +763,12 @@ ClientResult connectAndFuzz(const char *host, int port, int slot, int commands_n
             if (result == CMD_DISCONNECTED || result == CMD_MOVED) {
                 /* Connection closed by server or slot moved, (re)connect to the slot's node */
                 valkeyFree(ctx);
-                ctx = reconnectWithBackoff(node_host, node_port, ssl_config);
+                int reachable = 0;
+                ctx = reconnectWithBackoff(node_host, node_port, ssl_config, &reachable);
                 if (ctx == NULL) {
-                    client_result = CLIENT_UNREACHABLE;
+                    /* Only a TCP-level connect failure means the node is gone. A node
+                     * that keeps accepting and closing is evicting this client. */
+                    client_result = reachable ? CLIENT_DONE : CLIENT_UNREACHABLE;
                     break;
                 }
                 /* Reset client fuzzer context on successful reconnection */
@@ -930,7 +958,7 @@ int runFuzzerClients(const char *host, int port, int commands_num, int duration,
 
     /* Connect and init fuzzer */
     valkeyContext *ctx;
-    ctx = connectToServer(host, port, ssl_config);
+    ctx = connectToServer(host, port, ssl_config, NULL);
     if (ctx == NULL) {
         logMessage(LOG_ERROR, "Failed to connect to server.");
         return reportOutcome(FUZZ_SETUP_ERROR);
