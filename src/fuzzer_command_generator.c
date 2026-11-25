@@ -533,7 +533,7 @@ void generateRandomSpecialValue(FuzzerCommand *cmd, ConfigEntry *entry, const ch
             "e",  /* Evicted events */
             "KEA" /* Combination */
         };
-        appendArg(cmd, sdsnew(options[fuzzRand() % 14]));
+        appendArg(cmd, sdsnew(options[fuzzRand() % (sizeof(options) / sizeof(options[0]))]));
     } else if (strcasecmp(config_name, "oom-score-adj-values") == 0) {
         /* Format: <value> <value> <value> */
         int val1 = fuzzRand() % 1000;
