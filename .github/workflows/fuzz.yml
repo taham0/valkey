@@ -45,6 +45,10 @@ on:
         type: choice
         options: [all, normal, asan, ubsan]
         default: all
+      file_issues:
+        description: "Open or comment on issues for failures (otherwise only upload the text)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -135,3 +139,48 @@ jobs:
           path: |
             fuzz-info.txt
             tests/tmp/
+
+  # Opens an issue for each new crash, assertion or malformed reply in the failed
+  # jobs' logs, or comments on the open issue with the same signature. See
+  # .github/scripts/fuzz-report.js. It only posts with the file_issues input, or,
+  # for the scheduled run, the FUZZ_FILE_ISSUES repository variable set to true.
+  # Otherwise it uploads the text it would post (fuzz-issue-report).
+  report:
+    needs: fuzz
+    if: always() && needs.fuzz.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: .github/scripts
+      - name: Test the issue filing script
+        run: node .github/scripts/fuzz-report.test.js
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: fuzz-logs-*
+          path: fuzz-logs
+      - name: File issues
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          FUZZ_FILE_ISSUES: ${{ (github.event_name == 'workflow_dispatch' && inputs.file_issues) || (github.event_name == 'schedule' && vars.FUZZ_FILE_ISSUES == 'true') }}
+          # Where each kind of finding goes: "issue", or "hold" to fail this job
+          # without filing. Sanitizer reports can be security bugs, which
+          # SECURITY.md asks not to report in public issues, so they are held.
+          # TODO: send held findings to a private alert once there is one.
+          FUZZ_ROUTE_CRASH: issue
+          FUZZ_ROUTE_ASSERTION: issue
+          FUZZ_ROUTE_MALFORMED: issue
+          FUZZ_ROUTE_SANITIZER: hold
+        with:
+          script: |
+            const report = require('./.github/scripts/fuzz-report.js');
+            await report.run({github, context, core, inputDir: 'fuzz-logs', outputDir: 'fuzz-issue-report'});
+      - name: Upload the issue text
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fuzz-issue-report
+          path: fuzz-issue-report/

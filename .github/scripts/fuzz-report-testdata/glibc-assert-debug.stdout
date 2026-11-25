@@ -1,0 +1,74 @@
+26839:M 25 Nov 2026 19:20:19.429 * Ready to accept connections tcp
+
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+26839:M 25 Nov 2026 19:20:20.363 # === ASSERTION FAILED CLIENT CONTEXT ===
+26839:M 25 Nov 2026 19:20:20.363 # client->flags = 234187193508167680(0-63) 8(64-127)
+26839:M 25 Nov 2026 19:20:20.363 # client->conn = fd=10
+26839:M 25 Nov 2026 19:20:20.363 # client->argc = 2
+26839:M 25 Nov 2026 19:20:20.363 # client->argv[0] = "debug" (refcount: 1)
+26839:M 25 Nov 2026 19:20:20.363 # client->argv[1]: 6 bytes
+26839:M 25 Nov 2026 19:20:20.363 # === ASSERTION FAILED OBJECT CONTEXT ===
+26839:M 25 Nov 2026 19:20:20.363 # Object type: 0
+26839:M 25 Nov 2026 19:20:20.363 # Object encoding: 8
+26839:M 25 Nov 2026 19:20:20.363 # Object refcount: 1
+26839:M 25 Nov 2026 19:20:20.363 # === RECURSIVE ASSERTION FAILED ===
+26839:M 25 Nov 2026 19:20:20.363 # ==> debug.c:588 '1 == 2' is not true
+
+------ STACK TRACE ------
+
+26846 valkey-server
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f51a98a6377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f51a98a044b]
+/lib64/libc.so.6(clone+0x3f)[0x7f51a95db52f]
+
+26841 bio_close_file
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f51a98a6377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f51a98a044b]
+/lib64/libc.so.6(clone+0x3f)[0x7f51a95db52f]
+
+26845 bio_tls_reload
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f51a98a6377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f51a98a044b]
+/lib64/libc.so.6(clone+0x3f)[0x7f51a95db52f]
+
+26844 bio_rdb_save
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f51a98a6377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f51a98a044b]
+/lib64/libc.so.6(clone+0x3f)[0x7f51a95db52f]
+
+26842 bio_aof
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f51a98a6377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f51a98a044b]
+/lib64/libc.so.6(clone+0x3f)[0x7f51a95db52f]
+
+26843 bio_lazy_free
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f51a98a6377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f51a98a044b]
+/lib64/libc.so.6(clone+0x3f)[0x7f51a95db52f]
+
+26839 valkey-server *
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(_serverAssertWithInfo+0x4a)[0x4ae4ca]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(debugCommand+0x206b)[0x4b351b]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(call+0x297)[0x567b87]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(processCommand+0x74b)[0x568a5b]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(processCommandAndResetClient+0x31)[0x4fcf91]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(processInputBuffer+0x314)[0x506e64]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(readQueryFromClient+0xae)[0x50714e]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601[0x535faf]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(aeMain+0x116)[0x480b96]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(main+0x5d7)[0x461ed7]
+/lib64/libc.so.6(__libc_start_main+0xea)[0x7f51a950d13a]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25601(_start+0x2a)[0x46290a]
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+
+=== VALKEY BUG REPORT END. Make sure to include from START to END. ===

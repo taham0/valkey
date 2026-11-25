@@ -1,0 +1,75 @@
+16282:M 25 Nov 2026 19:39:22.743 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+16282:M 25 Nov 2026 19:39:22.743 * oO0OoO0OoO0Oo Valkey is starting oO0OoO0OoO0Oo
+16282:M 25 Nov 2026 19:39:22.743 * Valkey version=255.255.255, bits=64, commit=bd30c9fc, modified=0, pid=16282, just started
+16282:M 25 Nov 2026 19:39:22.743 * Configuration loaded
+16282:M 25 Nov 2026 19:39:22.774 * monotonic clock: X86 TSC @ 2400.17 ticks/us
+16282:M 25 Nov 2026 19:39:22.774 * Running mode=standalone, port=25605.
+16282:M 25 Nov 2026 19:39:22.774 * Static Module 'lua' successfully loaded (version 1)
+16282:M 25 Nov 2026 19:39:22.775 * Server initialized
+16282:M 25 Nov 2026 19:39:22.775 * Ready to accept connections tcp
+16282:signal-handler (1795635563) 
+--- WATCHDOG TIMER EXPIRED ---
+
+------ STACK TRACE ------
+EIP:
+/lib64/libpthread.so.0(__nanosleep+0x3b)[0x7f098b915dfb]
+
+16285 bio_aof
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f098b912377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f098b90c44b]
+/lib64/libc.so.6(clone+0x3f)[0x7f098b64752f]
+
+16286 bio_lazy_free
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f098b912377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f098b90c44b]
+/lib64/libc.so.6(clone+0x3f)[0x7f098b64752f]
+
+16287 bio_rdb_save
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f098b912377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f098b90c44b]
+/lib64/libc.so.6(clone+0x3f)[0x7f098b64752f]
+
+16288 bio_tls_reload
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f098b912377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f098b90c44b]
+/lib64/libc.so.6(clone+0x3f)[0x7f098b64752f]
+
+16289 valkey-server
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f098b912377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f098b90c44b]
+/lib64/libc.so.6(clone+0x3f)[0x7f098b64752f]
+
+16284 bio_close_file
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7f098b912377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(bioProcessBackgroundJobs+0xe8)[0x47c0b8]
+/lib64/libpthread.so.0(+0x744b)[0x7f098b90c44b]
+/lib64/libc.so.6(clone+0x3f)[0x7f098b64752f]
+
+16282 valkey-server *
+/lib64/libpthread.so.0(+0x118e0)[0x7f098b9168e0]
+/lib64/libpthread.so.0(__nanosleep+0x3b)[0x7f098b915dfb]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(debugCommand+0x2715)[0x4b3bc5]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(call+0x297)[0x567b87]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(processCommand+0x74b)[0x568a5b]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(processCommandAndResetClient+0x31)[0x4fcf91]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(processInputBuffer+0x314)[0x506e64]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(readQueryFromClient+0xae)[0x50714e]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605[0x535faf]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(aeMain+0x116)[0x480b96]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(main+0x5d7)[0x461ed7]
+/lib64/libc.so.6(__libc_start_main+0xea)[0x7f098b57913a]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25605(_start+0x2a)[0x46290a]
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+16282:signal-handler (1795635563) --------
+
+16282:M 25 Nov 2026 19:39:23.949 * User requested shutdown... (user request from 'id=5 addr=127.0.0.1:51342 laddr=127.0.0.1:25605 fd=10 name=*redacted* user=*redacted* lib-name= lib-ver=')
+16282:M 25 Nov 2026 19:39:23.949 * Module lua unloaded
+16282:M 25 Nov 2026 19:39:23.949 # Valkey is now ready to exit, bye bye...

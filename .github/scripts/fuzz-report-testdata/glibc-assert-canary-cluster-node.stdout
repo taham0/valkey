@@ -1,0 +1,112 @@
+32447:M 25 Nov 2026 19:22:48.139 - Accepted 127.0.0.1:60890
+
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+32447:M 25 Nov 2026 19:22:48.143 # === ASSERTION FAILED ===
+32447:M 25 Nov 2026 19:22:48.143 # ==> t_string.c:1155 'c->argc != 2' is not true
+
+------ STACK TRACE ------
+
+32451 bio_close_file
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7ffb793eb377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](bioProcessBackgroundJobs+0xe8)[0x47c118]
+/lib64/libpthread.so.0(+0x744b)[0x7ffb793e544b]
+/lib64/libc.so.6(clone+0x3f)[0x7ffb7912052f]
+
+32453 bio_lazy_free
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7ffb793eb377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](bioProcessBackgroundJobs+0xe8)[0x47c118]
+/lib64/libpthread.so.0(+0x744b)[0x7ffb793e544b]
+/lib64/libc.so.6(clone+0x3f)[0x7ffb7912052f]
+
+32456 valkey-server
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7ffb793eb377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](bioProcessBackgroundJobs+0xe8)[0x47c118]
+/lib64/libpthread.so.0(+0x744b)[0x7ffb793e544b]
+/lib64/libc.so.6(clone+0x3f)[0x7ffb7912052f]
+
+32452 bio_aof
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7ffb793eb377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](bioProcessBackgroundJobs+0xe8)[0x47c118]
+/lib64/libpthread.so.0(+0x744b)[0x7ffb793e544b]
+/lib64/libc.so.6(clone+0x3f)[0x7ffb7912052f]
+
+32455 bio_tls_reload
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7ffb793eb377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](bioProcessBackgroundJobs+0xe8)[0x47c118]
+/lib64/libpthread.so.0(+0x744b)[0x7ffb793e544b]
+/lib64/libc.so.6(clone+0x3f)[0x7ffb7912052f]
+
+32454 bio_rdb_save
+/lib64/libpthread.so.0(pthread_cond_wait+0x1f7)[0x7ffb793eb377]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](bioProcessBackgroundJobs+0xe8)[0x47c118]
+/lib64/libpthread.so.0(+0x744b)[0x7ffb793e544b]
+/lib64/libc.so.6(clone+0x3f)[0x7ffb7912052f]
+
+32447 valkey-server *
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster][0x555e39]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](call+0x297)[0x567c97]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](processCommand+0x74b)[0x568b6b]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](processCommandAndResetClient+0x31)[0x4fd011]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](processInputBuffer+0x314)[0x506ee4]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](readQueryFromClient+0xae)[0x5071ce]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster][0x53602f]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](aeMain+0x116)[0x480bf6]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](main+0x5d7)[0x461ed7]
+/lib64/libc.so.6(__libc_start_main+0xea)[0x7ffb7905213a]
+/home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25001 [cluster](_start+0x2a)[0x46290a]
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+
+------ INFO OUTPUT ------
+(removed from the fixture)
+------ CLUSTER NODES OUTPUT ------
+83893520a54cd4d724585ff0ea125f903f9b52b9 127.0.0.1:25001@35001,,tls-port=0,nodename=R1,shard-id=bc795d95e38dd5466e5328f9b2ce4c4a7ed79f54 myself,master - 0 0 4 connected 5462-10922
+0612ff60d6e036a31bf1f21cdf9ce8e987e7bed5 127.0.0.1:25002@35002,,tls-port=0,nodename=R0,shard-id=d657de4653343f0391eafbb7cffd7a8320c2f89a master - 0 1795634568048 1 connected 0-5461
+52573e945cf3382fd4e0dcba10b767a0efebc222 127.0.0.1:25000@35000,,tls-port=0,nodename=R2,shard-id=46cbdb7eb696488ba94118186e5959c9a6c4c21f master - 0 1795634568048 3 connected 10923-16383
+
+------ CLIENT LIST OUTPUT ------
+(removed from the fixture)
+------ CURRENT CLIENT INFO ------
+id=14 addr=127.0.0.1:60834 laddr=127.0.0.1:25001 fd=20 name= age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=0 argv-mem=19 multi-mem=0 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 tot-mem=17059 events=r cmd=strlen user=default redir=-1 resp=2 lib-name= lib-ver= tot-net-in=573 tot-net-out=7355 tot-cmds=14
+argc: 2
+argv[0]: "STRLEN"
+argv[1]: "{4I0}string:2"
+
+------ EXECUTING CLIENT INFO ------
+id=14 addr=127.0.0.1:60834 laddr=127.0.0.1:25001 fd=20 name= age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=0 argv-mem=19 multi-mem=0 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 tot-mem=17059 events=r cmd=strlen user=default redir=-1 resp=2 lib-name= lib-ver= tot-net-in=573 tot-net-out=7355 tot-cmds=14
+argc: 2
+argv[0]: "STRLEN"
+argv[1]: "{4I0}string:2"
+
+------ MODULES INFO OUTPUT ------
+(removed from the fixture)
+------ CONFIG DEBUG OUTPUT ------
+(removed from the fixture)
+------ FAST MEMORY TEST ------
+32447:M 25 Nov 2026 19:22:48.148 # Bio worker thread #0 terminated
+32447:M 25 Nov 2026 19:22:48.148 # Bio worker thread #1 terminated
+32447:M 25 Nov 2026 19:22:48.148 # Bio worker thread #2 terminated
+32447:M 25 Nov 2026 19:22:48.148 # Bio worker thread #3 terminated
+32447:M 25 Nov 2026 19:22:48.148 # Bio worker thread #4 terminated
+32447:M 25 Nov 2026 19:22:48.148 # Bio worker thread #5 terminated
+*** Preparing to test memory region 9df000 (2387968 bytes)
+*** Preparing to test memory region 278bc000 (262144 bytes)
+*** Preparing to test memory region 7ffb68000000 (135168 bytes)
+*** Preparing to test memory region 7ffb6caaa000 (3145728 bytes)
+*** Preparing to test memory region 7ffb6cdab000 (10485760 bytes)
+*** Preparing to test memory region 7ffb6d7ac000 (10485760 bytes)
+*** Preparing to test memory region 7ffb6e1ad000 (10485760 bytes)
+*** Preparing to test memory region 7ffb6ebae000 (10485760 bytes)
+*** Preparing to test memory region 7ffb713b1000 (2621440 bytes)
+*** Preparing to test memory region 7ffb78200000 (14680064 bytes)
+*** Preparing to test memory region 7ffb793da000 (16384 bytes)
+*** Preparing to test memory region 7ffb795f8000 (16384 bytes)
+*** Preparing to test memory region 7ffb79f56000 (28672 bytes)
+*** Preparing to test memory region 7ffb79f6d000 (4096 bytes)
+.O.O.O.O.O.O.O.O.O.O.O.O.O.O
+Fast memory test PASSED, however your memory can still be broken. Please run a memory test for several hours if possible.
+
+=== VALKEY BUG REPORT END. Make sure to include from START to END. ===

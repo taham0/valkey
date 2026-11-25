@@ -1,0 +1,106 @@
+23976:M 25 Nov 2026 19:40:56.590 - Accepted 127.0.0.1:48248
+
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+23976:M 25 Nov 2026 19:40:56.590 # === ASSERTION FAILED ===
+23976:M 25 Nov 2026 19:40:56.590 # ==> t_string.c:1155 'c->argc != 2' is not true
+
+------ STACK TRACE ------
+
+23990 bio_aof
+#0 0x7ff6d214f377 <unknown>
+#1 0x47cc77 mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x47cc77 bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7ff6d214944a <unknown>
+#4 0x7ff6d1e8452e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+23994 valkey-server
+#0 0x7ff6d214f377 <unknown>
+#1 0x47cc77 mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x47cc77 bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7ff6d214944a <unknown>
+#4 0x7ff6d1e8452e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+23989 bio_close_file
+#0 0x7ff6d214f377 <unknown>
+#1 0x47cc77 mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x47cc77 bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7ff6d214944a <unknown>
+#4 0x7ff6d1e8452e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+23993 bio_tls_reload
+#0 0x7ff6d214f377 <unknown>
+#1 0x47cc77 mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x47cc77 bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7ff6d214944a <unknown>
+#4 0x7ff6d1e8452e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+23992 bio_rdb_save
+#0 0x7ff6d214f377 <unknown>
+#1 0x47cc77 mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x47cc77 bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7ff6d214944a <unknown>
+#4 0x7ff6d1e8452e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+23976 valkey-server *
+#0 0x556e18 strlenCommand at /home/runner/work/valkey/valkey/src/t_string.c:1155
+#1 0x568c76 call at /home/runner/work/valkey/valkey/src/server.c:4258
+#2 0x569b4a processCommand at /home/runner/work/valkey/valkey/src/server.c:5056
+#3 0x4fdef0 processCommandAndResetClient at /home/runner/work/valkey/valkey/src/networking.c:4423
+#4 0x507dc3 processInputBuffer at /home/runner/work/valkey/valkey/src/networking.c:4762
+#5 0x5080ad readQueryFromClient at /home/runner/work/valkey/valkey/src/networking.c:4916
+#6 0x543e5e callHandler at /home/runner/work/valkey/valkey/src/connhelpers.h:79
+#7 0x543e5e connSocketEventHandler at /home/runner/work/valkey/valkey/src/socket.c:318
+#8 0x481755 aeFireFileEvent at /home/runner/work/valkey/valkey/src/ae.c:506
+#9 0x481755 aeProcessEvents at /home/runner/work/valkey/valkey/src/ae.c:649
+#10 0x481755 aeMain at /home/runner/work/valkey/valkey/src/ae.c:692
+#11 0x462a66 main at /home/runner/work/valkey/valkey/src/server.c:8278
+#12 0x7ff6d1db6139 <unknown>
+#13 0x463499 <unknown>
+#14 0xffffffffffffffff <unknown>
+
+23991 bio_lazy_free
+#0 0x7ff6d214f377 <unknown>
+#1 0x47cc77 mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x47cc77 bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7ff6d214944a <unknown>
+#4 0x7ff6d1e8452e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+
+------ INFO OUTPUT ------
+(removed from the fixture)
+------ CLIENT LIST OUTPUT ------
+(removed from the fixture)
+------ CURRENT CLIENT INFO ------
+id=434 addr=127.0.0.1:48060 laddr=127.0.0.1:25000 fd=13 name= age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=0 argv-mem=14 multi-mem=0 rbs=16384 rbp=46 obl=0 oll=0 omem=0 tot-mem=17054 events=r cmd=strlen user=default redir=-1 resp=2 lib-name= lib-ver= tot-net-in=1850 tot-net-out=3584 tot-cmds=27
+argc: 2
+argv[0]: "STRLEN"
+argv[1]: "string:3"
+23976:M 25 Nov 2026 19:40:56.687 # key 'string:3' found in DB containing the following object:
+23976:M 25 Nov 2026 19:40:56.687 # Object type: 0
+23976:M 25 Nov 2026 19:40:56.687 # Object encoding: 0
+23976:M 25 Nov 2026 19:40:56.687 # Object refcount: 1
+
+------ EXECUTING CLIENT INFO ------
+id=434 addr=127.0.0.1:48060 laddr=127.0.0.1:25000 fd=13 name= age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=0 argv-mem=14 multi-mem=0 rbs=16384 rbp=46 obl=0 oll=0 omem=0 tot-mem=17054 events=r cmd=strlen user=default redir=-1 resp=2 lib-name= lib-ver= tot-net-in=1850 tot-net-out=3584 tot-cmds=27
+argc: 2
+argv[0]: "STRLEN"
+argv[1]: "string:3"
+23976:M 25 Nov 2026 19:40:56.687 # key 'string:3' found in DB containing the following object:
+23976:M 25 Nov 2026 19:40:56.687 # Object type: 0
+23976:M 25 Nov 2026 19:40:56.687 # Object encoding: 0
+23976:M 25 Nov 2026 19:40:56.687 # Object refcount: 1
+
+------ MODULES INFO OUTPUT ------
+(removed from the fixture)
+------ CONFIG DEBUG OUTPUT ------
+(removed from the fixture)
