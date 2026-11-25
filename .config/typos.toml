@@ -6,6 +6,8 @@ extend-exclude = [
     "deps/",
     # crc16_slottable is primarily pre-generated random strings.
     "src/crc16_slottable.c",
+    # Real server logs used as test data.
+    ".github/scripts/fuzz-report-testdata/",
 ]
 ignore-hidden = false
 
