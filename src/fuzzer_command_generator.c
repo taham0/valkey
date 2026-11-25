@@ -812,13 +812,15 @@ static void populateCommandEntry(CommandEntry *command, sds cmdName, sds subcomm
     command->info.argCount = 0;
 }
 
-/* Find a command in the registry by name and update its arity and flags */
+/* Find a command in the registry by name and update its arity and flags.
+ * COMMAND names a subcommand "config|get", the registry "CONFIG GET". */
 static void updateCommand(sds cmdName, int arity, valkeyReply *flagsArray) {
+    sds name = sdsmapchars(sdsnew(cmdName), "|", " ", 1);
     for (size_t j = 0; j < fuzz_ctx->commandRegistrySize; j++) {
         CommandEntry *cmd = &fuzz_ctx->commandRegistry[j];
 
         /* Check if this is the command we're looking for */
-        if (cmd->argc != 1 || strcasecmp(cmd->argv[0], cmdName) != 0) continue;
+        if (strcasecmp(cmd->fullname, name) != 0) continue;
 
         /* Set the arity */
         cmd->arity = arity;
@@ -833,9 +835,9 @@ static void updateCommand(sds cmdName, int arity, valkeyReply *flagsArray) {
             uint64_t flagValue = mapFlagType(flagStr);
             cmd->info.flags |= flagValue;
         }
-
-        return;
+        break;
     }
+    sdsfree(name);
 }
 
 /* Extract command flags from COMMAND output and update the command registry */
@@ -866,18 +868,10 @@ static void extractCommandFlags(valkeyReply *info) {
         if (cmdEntry->element[2]->type != VALKEY_REPLY_ARRAY) continue;
 
         valkeyReply *flagsArray = cmdEntry->element[2];
+        updateCommand(cmdName, arity, flagsArray);
 
-        for (size_t j = 0; j < fuzz_ctx->commandRegistrySize; j++) {
-            CommandEntry *cmd = &fuzz_ctx->commandRegistry[j];
-
-            /* Check if this is the command we're looking for */
-            if (cmd->argc == 1 && strcasecmp(cmd->argv[0], cmdName) != 0) {
-                /* update the command in our registry */
-                updateCommand(cmdName, arity, flagsArray);
-            }
-
-            break;
-        }
+        /* Element 9 lists the subcommands, as entries of the same form */
+        if (cmdEntry->elements > 9) extractCommandFlags(cmdEntry->element[9]);
     }
 }
 
