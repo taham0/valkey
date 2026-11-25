@@ -1,0 +1,90 @@
+15950:M 25 Nov 2026 19:39:03.900 * Ready to accept connections tcp
+
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+15950:M 25 Nov 2026 19:39:04.838 # === ASSERTION FAILED CLIENT CONTEXT ===
+15950:M 25 Nov 2026 19:39:04.838 # client->flags = 234187193508167680(0-63) 8(64-127)
+15950:M 25 Nov 2026 19:39:04.838 # client->conn = fd=10
+15950:M 25 Nov 2026 19:39:04.838 # client->argc = 2
+15950:M 25 Nov 2026 19:39:04.838 # client->argv[0] = "debug" (refcount: 1)
+15950:M 25 Nov 2026 19:39:04.838 # client->argv[1]: 6 bytes
+15950:M 25 Nov 2026 19:39:04.838 # === ASSERTION FAILED OBJECT CONTEXT ===
+15950:M 25 Nov 2026 19:39:04.838 # Object type: 0
+15950:M 25 Nov 2026 19:39:04.838 # Object encoding: 8
+15950:M 25 Nov 2026 19:39:04.838 # Object refcount: 1
+15950:M 25 Nov 2026 19:39:04.838 # === RECURSIVE ASSERTION FAILED ===
+15950:M 25 Nov 2026 19:39:04.838 # ==> debug.c:588 '1 == 2' is not true
+
+------ STACK TRACE ------
+
+15952 bio_close_file
+#0 0x7f03bca1e377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f03bca1844a <unknown>
+#4 0x7f03bc75352e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15957 valkey-server
+#0 0x7f03bca1e377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f03bca1844a <unknown>
+#4 0x7f03bc75352e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15955 bio_rdb_save
+#0 0x7f03bca1e377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f03bca1844a <unknown>
+#4 0x7f03bc75352e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15953 bio_aof
+#0 0x7f03bca1e377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f03bca1844a <unknown>
+#4 0x7f03bc75352e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15956 bio_tls_reload
+#0 0x7f03bca1e377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f03bca1844a <unknown>
+#4 0x7f03bc75352e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15950 valkey-server *
+#0 0x5a3da8 debugCommand at /home/runner/work/valkey/valkey/src/debug.c:588
+#1 0x804948 call at /home/runner/work/valkey/valkey/src/server.c:4258
+#2 0x80763f call at /home/runner/work/valkey/valkey/src/server.c:4180
+#3 0x80763f processCommand at /home/runner/work/valkey/valkey/src/server.c:5056
+#4 0x6df8af processCommandAndResetClient at /home/runner/work/valkey/valkey/src/networking.c:4423
+#5 0x6f74b9 processInputBuffer at /home/runner/work/valkey/valkey/src/networking.c:4762
+#6 0x6f8089 readQueryFromClient at /home/runner/work/valkey/valkey/src/networking.c:4916
+#7 0x82adb0 callHandler at /home/runner/work/valkey/valkey/src/connhelpers.h:79
+#8 0x82adb0 connSocketEventHandler at /home/runner/work/valkey/valkey/src/socket.c:318
+#9 0x49888b aeFireFileEvent at /home/runner/work/valkey/valkey/src/ae.c:506
+#10 0x49888b aeProcessEvents at /home/runner/work/valkey/valkey/src/ae.c:649
+#11 0x49888b aeMain at /home/runner/work/valkey/valkey/src/ae.c:692
+#12 0x46ca8a main at /home/runner/work/valkey/valkey/src/server.c:8278
+#13 0x7f03bc685139 <unknown>
+#14 0x46e289 <unknown>
+#15 0xffffffffffffffff <unknown>
+
+15954 bio_lazy_free
+#0 0x7f03bca1e377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f03bca1844a <unknown>
+#4 0x7f03bc75352e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+
+=== VALKEY BUG REPORT END. Make sure to include from START to END. ===

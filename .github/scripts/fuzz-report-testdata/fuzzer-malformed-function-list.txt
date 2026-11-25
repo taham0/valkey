@@ -1,0 +1,25 @@
+Fuzz seed: 1795634103652450
+Running fuzzer with 20 clients for 60 seconds
+
+(cut from the fixture)
+Progress: 345371 commands in 44 s, 7849.3 rps[19:28:53] [ERROR] [Thread 8] CRITICAL ERROR - MALFORMED REPLY DETECTED
+[19:28:53] [ERROR] [Thread 8] Error: Bad simple string value
+[19:28:53] [ERROR] [Thread 8] Command that caused malformed reply: FUNCTION LIST 
+
+	"\'$%^&*(){}[]<> lib1 WITHCODE
+
+No malformed reply data available in context
+[19:28:53] [ERROR] [Thread 8] ABORTING ALL THREADS due to malformed reply (pthread_id: 139690405512960)
+[19:28:53] [INFO ] [Thread 8] Error processing command, continuing with next one
+
+FUZZING ABORTED: Malformed reply detected
+[19:28:53] [INFO ] All client threads completed. 20 finished, 0 unreachable, 0 timed out, 0 thread errors.
+[19:28:53] [INFO ] === FINAL STATISTICS ===
+[19:28:53] [INFO ] Total commands sent: 348498
+[19:28:53] [INFO ] Success replies: 334229
+[19:28:53] [INFO ] Error replies: 14268
+[19:28:53] [INFO ] Malformed replies: 1
+[19:28:53] [INFO ] Total errors: 14268
+[19:28:53] [INFO ] Success rate: 95.91%
+[19:28:53] [INFO ] To see full error details, run with --fuzz-loglevel debug
+Fuzz outcome: malformed reply (exit code 2)

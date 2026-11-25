@@ -1,0 +1,14 @@
+33949:M 16 Nov 2026 03:01:40.480 * Evicting client: id=7 addr=127.0.0.1:43678 laddr=127.0.0.1:21119 fd=14 name=executing age=0 idle=0 flags=N capa= db=9 ...
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+33949:M 16 Nov 2026 03:01:40.481 # === ASSERTION FAILED ===
+33949:M 16 Nov 2026 03:01:40.481 # ==> server.c:1160 'c->conn' is not true
+
+------ STACK TRACE ------
+33949 valkey-server *
+valkey-server[0x536914]
+valkey-server(beforeNextClient+0x48)[0x4f418c]
+valkey-server(readQueryFromClient+0x15c)[0x4f999c]
+valkey-server[0x55e1bc]
+valkey-server(aeMain+0x138)[0x4686e4]
+valkey-server(main+0x640)[0x461e60]

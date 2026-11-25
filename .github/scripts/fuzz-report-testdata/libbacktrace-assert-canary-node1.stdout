@@ -1,0 +1,116 @@
+14713:M 25 Nov 2026 19:38:30.267 - Accepted 127.0.0.1:43712
+
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+14713:M 25 Nov 2026 19:38:30.270 # === ASSERTION FAILED ===
+14713:M 25 Nov 2026 19:38:30.270 # ==> t_string.c:1155 'c->argc != 2' is not true
+
+------ STACK TRACE ------
+
+14731 bio_tls_reload
+#0 0x7faf568b5377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7faf568af44a <unknown>
+#4 0x7faf565ea52e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+14729 bio_lazy_free
+#0 0x7faf568b5377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7faf568af44a <unknown>
+#4 0x7faf565ea52e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+14728 bio_aof
+#0 0x7faf568b5377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7faf568af44a <unknown>
+#4 0x7faf565ea52e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+14732 valkey-server
+#0 0x7faf568b5377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7faf568af44a <unknown>
+#4 0x7faf565ea52e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+14727 bio_close_file
+#0 0x7faf568b5377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7faf568af44a <unknown>
+#4 0x7faf565ea52e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+14713 valkey-server *
+#0 0x8b0b73 strlenCommand at /home/runner/work/valkey/valkey/src/t_string.c:1155
+#1 0x804948 call at /home/runner/work/valkey/valkey/src/server.c:4258
+#2 0x80763f call at /home/runner/work/valkey/valkey/src/server.c:4180
+#3 0x80763f processCommand at /home/runner/work/valkey/valkey/src/server.c:5056
+#4 0x6df8af processCommandAndResetClient at /home/runner/work/valkey/valkey/src/networking.c:4423
+#5 0x6f74b9 processInputBuffer at /home/runner/work/valkey/valkey/src/networking.c:4762
+#6 0x6f8089 readQueryFromClient at /home/runner/work/valkey/valkey/src/networking.c:4916
+#7 0x82adb0 callHandler at /home/runner/work/valkey/valkey/src/connhelpers.h:79
+#8 0x82adb0 connSocketEventHandler at /home/runner/work/valkey/valkey/src/socket.c:318
+#9 0x49888b aeFireFileEvent at /home/runner/work/valkey/valkey/src/ae.c:506
+#10 0x49888b aeProcessEvents at /home/runner/work/valkey/valkey/src/ae.c:649
+#11 0x49888b aeMain at /home/runner/work/valkey/valkey/src/ae.c:692
+#12 0x46ca8a main at /home/runner/work/valkey/valkey/src/server.c:8278
+#13 0x7faf5651c139 <unknown>
+#14 0x46e289 <unknown>
+#15 0xffffffffffffffff <unknown>
+
+14730 bio_rdb_save
+#0 0x7faf568b5377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7faf568af44a <unknown>
+#4 0x7faf565ea52e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+
+------ INFO OUTPUT ------
+(removed from the fixture)
+------ CLUSTER NODES OUTPUT ------
+97b5e631132978a46c3f4624750e9d1553524bf5 127.0.0.1:25000@35000,,tls-port=0,nodename=R2,shard-id=f9be5da36d21cedb40ac1b927c4a3e5df4921340 myself,master - 0 0 3 connected 10923-16383
+382bc4a57cf67bbf136e6416116956fd5578c1fa 127.0.0.1:25002@35002,,tls-port=0,nodename=R0,shard-id=2dbf27595f459d8dd2c32d98b82ff1386c398d8f master - 0 1795635510205 1 connected 0-5461
+bde7a2a1fe83ce5e9409b16456d695bfd05af4c0 127.0.0.1:25001@35001,,tls-port=0,nodename=R1,shard-id=aa67dd1055b2d4b9caef3161d6dee0a52df2ee62 master - 0 1795635510168 2 connected 5462-10922
+2c1601279a12759d418c701ef689f20271e0183e 192.168.175.1:2@10002,,tls-port=0,shard-id=b7025f9d871f7473ff63ff2d8202a30bbc625261 handshake - 0 0 0 connected
+58adf5f102a7e11b4fa614f30b750f674f90bbe1 192.168.36.54:44@12,,tls-port=0,shard-id=4431d73e1ad5f6bb6c42e6c49a14f55f7dfe10e3 handshake - 0 0 0 connected
+a27b23da3008b3755ad64e9e3cf2495be14cadb4 192.168.248.212:41@10041,,tls-port=0,shard-id=7ff0d47e6842f7f978469751764dbf697461ebac handshake - 0 0 0 connected
+8199fc66d8cf723c368f58785a5c08619d94ab9a 192.168.102.114:14@10014,,tls-port=0,shard-id=0d7e4f24be2b2cbec26de3ae72b0a58535874a5f handshake - 0 0 0 connected
+
+------ CLIENT LIST OUTPUT ------
+(removed from the fixture)
+------ CURRENT CLIENT INFO ------
+id=870 addr=127.0.0.1:43712 laddr=127.0.0.1:25000 fd=18 name= age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=0 watch=0 qbuf=0 qbuf-free=0 argv-mem=19 multi-mem=0 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 tot-mem=17483 events=r cmd=strlen user=default redir=-1 resp=2 lib-name= lib-ver= tot-net-in=4055 tot-net-out=10914 tot-cmds=52
+argc: 2
+argv[0]: "STRLEN"
+argv[1]: "{6hA}string:1"
+14713:M 25 Nov 2026 19:38:30.442 # key '{6hA}string:1' found in DB containing the following object:
+14713:M 25 Nov 2026 19:38:30.442 # Object type: 0
+14713:M 25 Nov 2026 19:38:30.442 # Object encoding: 0
+14713:M 25 Nov 2026 19:38:30.442 # Object refcount: 1
+
+------ EXECUTING CLIENT INFO ------
+id=870 addr=127.0.0.1:43712 laddr=127.0.0.1:25000 fd=18 name= age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=0 watch=0 qbuf=0 qbuf-free=0 argv-mem=19 multi-mem=0 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 tot-mem=17483 events=r cmd=strlen user=default redir=-1 resp=2 lib-name= lib-ver= tot-net-in=4055 tot-net-out=10914 tot-cmds=52
+argc: 2
+argv[0]: "STRLEN"
+argv[1]: "{6hA}string:1"
+14713:M 25 Nov 2026 19:38:30.442 # key '{6hA}string:1' found in DB containing the following object:
+14713:M 25 Nov 2026 19:38:30.442 # Object type: 0
+14713:M 25 Nov 2026 19:38:30.442 # Object encoding: 0
+14713:M 25 Nov 2026 19:38:30.442 # Object refcount: 1
+
+------ MODULES INFO OUTPUT ------
+(removed from the fixture)
+------ CONFIG DEBUG OUTPUT ------
+(removed from the fixture)

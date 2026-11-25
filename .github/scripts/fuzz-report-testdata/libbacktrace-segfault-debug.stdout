@@ -1,0 +1,127 @@
+15598:M 25 Nov 2026 19:38:51.161 * Ready to accept connections tcp
+
+
+=== VALKEY BUG REPORT START: Cut & paste starting from here ===
+15598:M 25 Nov 2026 19:38:52.098 # valkey 255.255.255 crashed by signal: 11, si_code: 2
+15598:M 25 Nov 2026 19:38:52.098 # Accessing address: 0x7f4ca6704000
+15598:M 25 Nov 2026 19:38:52.098 # Crashed running the instruction at: 0x5a0a8f
+
+------ STACK TRACE ------
+EIP:
+#0 0x5a0a8f debugCommand at /home/runner/work/valkey/valkey/src/debug.c:569
+
+15608 bio_aof
+#0 0x7f4ca99db377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f4ca99d544a <unknown>
+#4 0x7f4ca971052e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15611 bio_tls_reload
+#0 0x7f4ca99db377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f4ca99d544a <unknown>
+#4 0x7f4ca971052e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15610 bio_rdb_save
+#0 0x7f4ca99db377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f4ca99d544a <unknown>
+#4 0x7f4ca971052e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15612 valkey-server
+#0 0x7f4ca99db377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f4ca99d544a <unknown>
+#4 0x7f4ca971052e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15609 bio_lazy_free
+#0 0x7f4ca99db377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f4ca99d544a <unknown>
+#4 0x7f4ca971052e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15607 bio_close_file
+#0 0x7f4ca99db377 <unknown>
+#1 0x6c4a2a mutexQueuePop at /home/runner/work/valkey/valkey/src/mutexqueue.c:123
+#2 0x4c3cec bioProcessBackgroundJobs at /home/runner/work/valkey/valkey/src/bio.c:281
+#3 0x7f4ca99d544a <unknown>
+#4 0x7f4ca971052e <unknown>
+#5 0xffffffffffffffff <unknown>
+
+15598 valkey-server *
+#0 0x7f4ca99df8df <unknown>
+#1 0x5a0a8f debugCommand at /home/runner/work/valkey/valkey/src/debug.c:569
+#2 0x804948 call at /home/runner/work/valkey/valkey/src/server.c:4258
+#3 0x80763f call at /home/runner/work/valkey/valkey/src/server.c:4180
+#4 0x80763f processCommand at /home/runner/work/valkey/valkey/src/server.c:5056
+#5 0x6df8af processCommandAndResetClient at /home/runner/work/valkey/valkey/src/networking.c:4423
+#6 0x6f74b9 processInputBuffer at /home/runner/work/valkey/valkey/src/networking.c:4762
+#7 0x6f8089 readQueryFromClient at /home/runner/work/valkey/valkey/src/networking.c:4916
+#8 0x82adb0 callHandler at /home/runner/work/valkey/valkey/src/connhelpers.h:79
+#9 0x82adb0 connSocketEventHandler at /home/runner/work/valkey/valkey/src/socket.c:318
+#10 0x49888b aeFireFileEvent at /home/runner/work/valkey/valkey/src/ae.c:506
+#11 0x49888b aeProcessEvents at /home/runner/work/valkey/valkey/src/ae.c:649
+#12 0x49888b aeMain at /home/runner/work/valkey/valkey/src/ae.c:692
+#13 0x46ca8a main at /home/runner/work/valkey/valkey/src/server.c:8278
+#14 0x7f4ca9642139 <unknown>
+#15 0x46e289 <unknown>
+#16 0xffffffffffffffff <unknown>
+
+7/7 expected stacktraces.
+
+------ STACK TRACE DONE ------
+
+------ REGISTERS ------
+15598:M 25 Nov 2026 19:38:52.279 # 
+RAX:00007f4ca6704000 RBX:000061600000bda8
+RCX:0000000000000000 RDX:0000000000000000
+RDI:0000000000000000 RSI:0000000000001000
+RBP:00007ffec0215360 RSP:00007ffec02128e0
+R8 :ffffffffffffffff R9 :0000000000000000
+R10:0000000000000022 R11:0000000000000246
+R12:00007ffec0212950 R13:000061600000bd80
+R14:00000c2c000017b5 R15:00000fffd804252a
+RIP:00000000005a0a8f EFL:0000000000010246
+CSGSFS:002b000000000033
+15598:M 25 Nov 2026 19:38:52.279 * hide-user-data-from-log is on, skip logging stack content to avoid spilling user data.
+
+------ INFO OUTPUT ------
+(removed from the fixture)
+------ CLIENT LIST OUTPUT ------
+(removed from the fixture)
+------ CURRENT CLIENT INFO ------
+id=4 addr=127.0.0.1:36052 laddr=127.0.0.1:25603 fd=10 name=*redacted* age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=0 argv-mem=13 multi-mem=0 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 tot-mem=17029 events=r cmd=debug user=*redacted* redir=-1 resp=2 lib-name= lib-ver= tot-net-in=29 tot-net-out=0 tot-cmds=0
+argc: 2
+argv[0]: "debug"
+argv[1]: 8 bytes
+
+------ EXECUTING CLIENT INFO ------
+id=4 addr=127.0.0.1:36052 laddr=127.0.0.1:25603 fd=10 name=*redacted* age=0 idle=0 flags=N capa= db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=0 argv-mem=13 multi-mem=0 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 tot-mem=17029 events=r cmd=debug user=*redacted* redir=-1 resp=2 lib-name= lib-ver= tot-net-in=29 tot-net-out=0 tot-cmds=0
+argc: 2
+argv[0]: "debug"
+argv[1]: 8 bytes
+
+------ MODULES INFO OUTPUT ------
+(removed from the fixture)
+------ CONFIG DEBUG OUTPUT ------
+(removed from the fixture)
+------ DUMPING CODE AROUND EIP ------
+Symbol: debugCommand (base: 0x5a05f0)
+Module: /home/runner/work/valkey/valkey/src/valkey-server 127.0.0.1:25603 (base 0x400000)
+$ xxd -r -p /tmp/dump.hex /tmp/dump.bin
+$ objdump --adjust-vma=0x5a05f0 -D -b binary -m i386:x86-64 /tmp/dump.bin
+------
+15598:M 25 Nov 2026 19:38:52.280 # dump of function (hexdump of 1311 bytes):
+554889e54157415641554989fd41544c8da5f0d5ffff534881ec582a0000448b056b356b004585c00f85b31b0000498d8424e02900004d89e749c1ef03488985e8d5ffff498d453049c70424b38ab54149c744240860df9b0049c7442410f0055a0041c7870080ff7ff1f1f1f141c7870480ff7ff1f104f241c7870880ff7f04f200f241c7870c80ff7ff2f200f241c7871080ff7ff2f200f241c7871480ff7ff2f200f241c7871880ff7ff2f200f241c7871c80ff7ff2f200f241c7872080ff7ff2f200f241c7872480ff7ff2f200f241c7872880ff7ff2f2000041c7872c80ff7ff2f2000041c7873080ff7f04f2f2f241c7873480ff7ff2f2000041c7873880ff7f04f2f2f241c7873c80ff7ff2f2000041c7874480ff7f0000f2f241c7874880ff7ff2f2000041c7875880ff7f0000f2f241c7875c80ff7ff2f2000041c7876c80ff7f0000000241c7877080ff7ff2f2f2f241c7877480ff7ff2f2f2f241c7870881ff7f000000f241c7870c81ff7ff2f2f2f241c7871081ff7ff2f2f2f241c7871481ff7ff2f2f2f241c7871881ff7ff2f2f2f241c7871c83ff7ff2f2f2f241c7872083ff7ff2f2f2f241c7872483ff7ff2f2f2f241c7872883ff7ff2f2f2f241c7872c85ff7ff3f3f3f341c7873085ff7ff3f3f3f341c7873485ff7ff3f3f3f341c7873885ff7ff3f3f3f3488985e0d5ffff48c1e8030fb6800080ff7f84c074083c030f8ed804000041837d3002498d5d280f84250300004989de49c1ee034180be0080ff7f000f85e9190000498b4528488d78084889fa48c1ea0380ba0080ff7f000f85c8190000488b7808e8abc41600bea031a3004889c7e80e74ecff85c00f84f60100004180be0080ff7f000f85d71e0000498b4528488d78084889fa48c1ea0380ba0080ff7f000f858e1e0000488b7808e863c41600bee031a3004889c7e8c673ecff85c00f84751e00004180be0080ff7f000f85451e0000498b4528488d78084889fa48c1ea0380ba0080ff7f000f85311e0000488b7808e81bc41600be8032a3004889c7e87e73ecff85c00f8516030000488b85e8d5ffff4c8db070d6ffff4c89f048c1e80380b80080ff7f000f85f61d0000488b85e8d5ffff48c78070d6ffff00000000488b85e0d5ffff48c1e8030fb6800080ff7f84c074083c030f8ea403000041837d30027e7d4889d848c1e80380b80080ff7f000f85c31e0000498b4528488d78104889fa48c1ea0380ba0080ff7f000f85b71e0000488b701031c94c89f24c89efe8fc69170085c00f85060100004c89f048c1e80380b80080ff7f000f85821e0000488b85e8d5ffff4883b870d6ffff00790f48c78070d6ffff000000000f1f40004889d848c1e80380b80080ff7f000f85881d0000498b4528488d78084889fa48c1ea0380ba0080ff7f000f855f1d0000488b7808e8f7c21600be8032a3004889c7e85a72ecff83f8014c89f019f648c1e80383e60380b80080ff7f000f85321d0000488b85e8d5ffff4c89ef488b9070d6ffffe898aa2600be0033a3004c89efe85b1d1500eb4b660f1f840000000000b922000000ba010000004531c931ff41b8ffffffffbe00100000e8217becff4889c24889c148c1ea0383e1070fb6920080ff7f38ca7f0884d20f85b81c0000c60078488d85f0d5ffff4c39e00f8545170000498dbf0880ff7f31c0498d8f0080ff7f49c7870080ff7f000000004883e7f8660fefc049c7874480ff7f000000004829f983c14cc1e903f348ab410f11870881ff7f49c7875880ff7f0000000049c7876c80ff7f0000000041c7877480ff7f0000000041c7871881ff7f000000
+
+=== VALKEY BUG REPORT END. Make sure to include from START to END. ===

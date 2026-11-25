@@ -1,0 +1,97 @@
+
+=================================================================
+==8495==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 3132 byte(s) in 261 object(s) allocated from:
+    #0 0x7f0b48ec4fc7 in __interceptor_malloc (/tmp/asan10/lib/libasan.so.6+0xaffc7)
+    #1 0x9294fa in ztrymalloc_usable_internal /home/runner/work/valkey/valkey/src/zmalloc.c:183
+    #2 0x9294fa in valkey_malloc /home/runner/work/valkey/valkey/src/zmalloc.c:212
+    #3 0x92af3b in zstrdup /home/runner/work/valkey/valkey/src/zmalloc.c:524
+    #4 0x8b0aa4 in strlenCommand /home/runner/work/valkey/valkey/src/t_string.c:1155
+    #5 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #6 0x80763f in call /home/runner/work/valkey/valkey/src/server.c:4180
+    #7 0x80763f in processCommand /home/runner/work/valkey/valkey/src/server.c:5056
+    #8 0x6df8af in processCommandAndResetClient /home/runner/work/valkey/valkey/src/networking.c:4423
+    #9 0x6f74b9 in processInputBuffer /home/runner/work/valkey/valkey/src/networking.c:4762
+    #10 0x6f8089 in readQueryFromClient /home/runner/work/valkey/valkey/src/networking.c:4916
+    #11 0x82adb0 in callHandler /home/runner/work/valkey/valkey/src/connhelpers.h:79
+    #12 0x82adb0 in connSocketEventHandler /home/runner/work/valkey/valkey/src/socket.c:318
+    #13 0x49888b in aeFireFileEvent /home/runner/work/valkey/valkey/src/ae.c:506
+    #14 0x49888b in aeProcessEvents /home/runner/work/valkey/valkey/src/ae.c:649
+    #15 0x49888b in aeMain /home/runner/work/valkey/valkey/src/ae.c:692
+    #16 0x46ca8a in main /home/runner/work/valkey/valkey/src/server.c:8278
+    #17 0x7f0b47f09139 in __libc_start_main (/lib64/libc.so.6+0x21139)
+
+Direct leak of 216 byte(s) in 18 object(s) allocated from:
+    #0 0x7f0b48ec4fc7 in __interceptor_malloc (/tmp/asan10/lib/libasan.so.6+0xaffc7)
+    #1 0x9294fa in ztrymalloc_usable_internal /home/runner/work/valkey/valkey/src/zmalloc.c:183
+    #2 0x9294fa in valkey_malloc /home/runner/work/valkey/valkey/src/zmalloc.c:212
+    #3 0x92af3b in zstrdup /home/runner/work/valkey/valkey/src/zmalloc.c:524
+    #4 0x8b0aa4 in strlenCommand /home/runner/work/valkey/valkey/src/t_string.c:1155
+    #5 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #6 0x6c23b4 in execCommand /home/runner/work/valkey/valkey/src/multi.c:403
+    #7 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #8 0x80763f in call /home/runner/work/valkey/valkey/src/server.c:4180
+    #9 0x80763f in processCommand /home/runner/work/valkey/valkey/src/server.c:5056
+    #10 0x6df8af in processCommandAndResetClient /home/runner/work/valkey/valkey/src/networking.c:4423
+    #11 0x6f74b9 in processInputBuffer /home/runner/work/valkey/valkey/src/networking.c:4762
+    #12 0x6f8089 in readQueryFromClient /home/runner/work/valkey/valkey/src/networking.c:4916
+    #13 0x82adb0 in callHandler /home/runner/work/valkey/valkey/src/connhelpers.h:79
+    #14 0x82adb0 in connSocketEventHandler /home/runner/work/valkey/valkey/src/socket.c:318
+    #15 0x49888b in aeFireFileEvent /home/runner/work/valkey/valkey/src/ae.c:506
+    #16 0x49888b in aeProcessEvents /home/runner/work/valkey/valkey/src/ae.c:649
+    #17 0x49888b in aeMain /home/runner/work/valkey/valkey/src/ae.c:692
+    #18 0x46ca8a in main /home/runner/work/valkey/valkey/src/server.c:8278
+    #19 0x7f0b47f09139 in __libc_start_main (/lib64/libc.so.6+0x21139)
+
+Direct leak of 120 byte(s) in 10 object(s) allocated from:
+    #0 0x7f0b48ec4fc7 in __interceptor_malloc (/tmp/asan10/lib/libasan.so.6+0xaffc7)
+    #1 0x9294fa in ztrymalloc_usable_internal /home/runner/work/valkey/valkey/src/zmalloc.c:183
+    #2 0x9294fa in valkey_malloc /home/runner/work/valkey/valkey/src/zmalloc.c:212
+    #3 0x92af3b in zstrdup /home/runner/work/valkey/valkey/src/zmalloc.c:524
+    #4 0x8b0aa4 in strlenCommand /home/runner/work/valkey/valkey/src/t_string.c:1155
+    #5 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #6 0x65cf6b in moduleCallCommandHelper /home/runner/work/valkey/valkey/src/module.c:7113
+    #7 0x689a44 in moduleCallArgv /home/runner/work/valkey/valkey/src/module.c:7315
+    #8 0x97e6f0 in luaServerGenericCommand (/home/runner/work/valkey/valkey/src/valkey-server+0x97e6f0)
+    #9 0x987c57 in luaD_precall (/home/runner/work/valkey/valkey/src/valkey-server+0x987c57)
+
+Direct leak of 36 byte(s) in 3 object(s) allocated from:
+    #0 0x7f0b48ec4fc7 in __interceptor_malloc (/tmp/asan10/lib/libasan.so.6+0xaffc7)
+    #1 0x9294fa in ztrymalloc_usable_internal /home/runner/work/valkey/valkey/src/zmalloc.c:183
+    #2 0x9294fa in valkey_malloc /home/runner/work/valkey/valkey/src/zmalloc.c:212
+    #3 0x92af3b in zstrdup /home/runner/work/valkey/valkey/src/zmalloc.c:524
+    #4 0x8b0aa4 in strlenCommand /home/runner/work/valkey/valkey/src/t_string.c:1155
+    #5 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #6 0x80763f in call /home/runner/work/valkey/valkey/src/server.c:4180
+    #7 0x80763f in processCommand /home/runner/work/valkey/valkey/src/server.c:5056
+    #8 0x6df8af in processCommandAndResetClient /home/runner/work/valkey/valkey/src/networking.c:4423
+    #9 0x6f74b9 in processInputBuffer /home/runner/work/valkey/valkey/src/networking.c:4762
+    #10 0x4cfca7 in processUnblockedClients /home/runner/work/valkey/valkey/src/blocked.c:188
+    #11 0x7f3f62 in beforeSleep /home/runner/work/valkey/valkey/src/server.c:2009
+    #12 0x498571 in aeProcessEvents /home/runner/work/valkey/valkey/src/ae.c:601
+    #13 0x498571 in aeMain /home/runner/work/valkey/valkey/src/ae.c:692
+    #14 0x46ca8a in main /home/runner/work/valkey/valkey/src/server.c:8278
+    #15 0x7f0b47f09139 in __libc_start_main (/lib64/libc.so.6+0x21139)
+
+Direct leak of 12 byte(s) in 1 object(s) allocated from:
+    #0 0x7f0b48ec4fc7 in __interceptor_malloc (/tmp/asan10/lib/libasan.so.6+0xaffc7)
+    #1 0x9294fa in ztrymalloc_usable_internal /home/runner/work/valkey/valkey/src/zmalloc.c:183
+    #2 0x9294fa in valkey_malloc /home/runner/work/valkey/valkey/src/zmalloc.c:212
+    #3 0x92af3b in zstrdup /home/runner/work/valkey/valkey/src/zmalloc.c:524
+    #4 0x8b0aa4 in strlenCommand /home/runner/work/valkey/valkey/src/t_string.c:1155
+    #5 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #6 0x6c23b4 in execCommand /home/runner/work/valkey/valkey/src/multi.c:403
+    #7 0x804948 in call /home/runner/work/valkey/valkey/src/server.c:4258
+    #8 0x80763f in call /home/runner/work/valkey/valkey/src/server.c:4180
+    #9 0x80763f in processCommand /home/runner/work/valkey/valkey/src/server.c:5056
+    #10 0x6df8af in processCommandAndResetClient /home/runner/work/valkey/valkey/src/networking.c:4423
+    #11 0x6f74b9 in processInputBuffer /home/runner/work/valkey/valkey/src/networking.c:4762
+    #12 0x4cfca7 in processUnblockedClients /home/runner/work/valkey/valkey/src/blocked.c:188
+    #13 0x7f3f62 in beforeSleep /home/runner/work/valkey/valkey/src/server.c:2009
+    #14 0x498571 in aeProcessEvents /home/runner/work/valkey/valkey/src/ae.c:601
+    #15 0x498571 in aeMain /home/runner/work/valkey/valkey/src/ae.c:692
+    #16 0x46ca8a in main /home/runner/work/valkey/valkey/src/server.c:8278
+    #17 0x7f0b47f09139 in __libc_start_main (/lib64/libc.so.6+0x21139)
+
+SUMMARY: AddressSanitizer: 3516 byte(s) leaked in 293 allocation(s).
