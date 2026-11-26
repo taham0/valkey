@@ -426,6 +426,8 @@ static int shouldFilterConfig(const char *key) {
         "save",
         "shutdown-on-sigint",
         "shutdown-on-sigterm",
+        "crash-log-enabled",      /* "no" drops the crash report of a server the fuzzer breaks */
+        "crash-memcheck-enabled", /* "yes" runs a memory test after a crash, which ASan reports as an error */
         NULL};
 
     if (!key) return 0;
