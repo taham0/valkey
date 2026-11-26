@@ -42,17 +42,12 @@
 #define PIPELINE_PROBABILITY 6 /* 1 in 6 batches is a pipeline */
 #define PIPELINE_MAX_DEPTH 300 /* Most commands sent before reading a reply */
 
-/* Eviction-limit biasing (config-commands mode only). The config generator only
- * ever sets maxmemory-clients to a tiny value that getClientEvictionLimit()
- * floors to 128KB, so with 20 clients eviction just thrashes and any client
- * large enough to matter is already over the limit on its own. Now and then a
- * client instead sets maxmemory-clients to just above the clients' current
- * memory, so eviction fires right at that boundary: a client grown large by
- * unread pipelined replies can be the marginal candidate while it is still
- * running a command. That boundary is where client-eviction use-after-free and
- * buffer-accounting bugs live. */
-#define RETUNE_PROBABILITY 150  /* ~1 in 150 batches retunes the limit */
-#define RETUNE_MAX_MARGIN 65536 /* set the limit up to 64KB above current memory */
+/* In config-commands mode a client now and then sets maxmemory-clients to 128KB
+ * to 512KB, about what 20 fuzz clients use, so eviction fires near the clients'
+ * own size, not only at the 128KB floor the config generator always hits. */
+#define RETUNE_PROBABILITY 150          /* ~1 in 150 batches retunes the limit */
+#define RETUNE_MIN_LIMIT (128 * 1024)   /* The server floors any lower limit to this */
+#define RETUNE_LIMIT_RANGE (384 * 1024) /* Width of the range above RETUNE_MIN_LIMIT */
 
 /* Global atomic counters for progress reporting */
 static atomic_int global_commands_sent = 0;
@@ -64,7 +59,7 @@ static atomic_int global_total_errors = 0;
 /* Global fuzzing flags */
 static int global_fuzz_flags = 0;
 
-/* Run seed, used to seed each client's pipelining PRNG so bursts replay. */
+/* Run seed, used to seed each client's pipelining PRNG so bursts and retunes replay. */
 static uint64_t global_run_seed = 0;
 
 /* Progress reporting control */
@@ -121,8 +116,8 @@ static long long monotonicUs(void) {
     return (long long)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
 
-/* Per-client PRNG (splitmix64) for pipelining choices, apart from the command
- * generator's and seeded from the run seed, so a replay pipelines the same. */
+/* Per-client PRNG (splitmix64) for pipelining and retune choices, apart from
+ * the command generator's and seeded from the run seed, so a replay does the same. */
 static __thread uint64_t pipe_rng_state = 0;
 static uint64_t pipeRand(void) {
     uint64_t z = (pipe_rng_state += 0x9E3779B97F4A7C15ULL);
@@ -679,25 +674,13 @@ static CommandResult sendBatchAndGetReplies(valkeyContext *ctx, int max_depth, i
     return ret;
 }
 
-/* Set maxmemory-clients to just above the clients' current memory, so eviction
- * fires at that boundary rather than at the floored 128KB. Reads
- * mem_clients_normal and adds a small random margin. Errors are ignored; the
- * main loop handles a dropped connection. */
+/* Set maxmemory-clients to a value that depends only on the seed, so a replay
+ * sets the same limits. Errors are ignored; the main loop handles a dropped
+ * connection. */
 static void retuneClientEvictionLimit(valkeyContext *ctx) {
-    valkeyReply *info = valkeyCommand(ctx, "INFO memory");
-    long long total = -1;
-    if (info) {
-        if (info->type == VALKEY_REPLY_STRING && info->str) {
-            const char *p = strstr(info->str, "mem_clients_normal:");
-            if (p) total = strtoll(p + strlen("mem_clients_normal:"), NULL, 10);
-        }
-        freeReplyObject(info);
-    }
-    if (total < 0) return;
-
-    long long limit = total + (long long)(pipeRand() % (RETUNE_MAX_MARGIN + 1));
-    valkeyReply *set = valkeyCommand(ctx, "CONFIG SET maxmemory-clients %lld", limit);
-    if (set) freeReplyObject(set);
+    unsigned long long limit = RETUNE_MIN_LIMIT + pipeRand() % RETUNE_LIMIT_RANGE;
+    valkeyReply *reply = valkeyCommand(ctx, "CONFIG SET maxmemory-clients %llu", limit);
+    if (reply) freeReplyObject(reply);
 }
 
 /* Connect and fuzz a Valkey server with optional TLS support
