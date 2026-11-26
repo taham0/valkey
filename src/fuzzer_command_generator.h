@@ -9,7 +9,7 @@ typedef struct FuzzerCommand {
     sds *argv;
     int argc;
     int size;
-    int may_block; /* A blocking command outside MULTI: its reply can be held back */
+    int may_block; /* A blocking command outside MULTI; a pipeline ends at it */
 } FuzzerCommand;
 
 /* Fuzzing mode types */

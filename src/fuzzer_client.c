@@ -634,7 +634,8 @@ static int isMovedForSlot(valkeyReply *reply, int slot, char *host, size_t hostl
  * replies. With max_depth 1 this is an ordinary send-then-wait. Otherwise the
  * commands are all written before any reply is read, so the server keeps the
  * earlier replies in the client's output buffer while it runs the later ones.
- * A command that may block ends the pipeline, so it never holds back others.
+ * A command that may block ends the pipeline early. This caps its depth: most
+ * pipelines stop within a few dozen commands.
  * Sets *sent to the number of commands sent. Returns the first non-success
  * result, or CMD_SUCCESS if every reply was fine. */
 static CommandResult sendBatchAndGetReplies(valkeyContext *ctx, int max_depth, int slot, char *host, size_t hostlen, int *port, int *sent) {
