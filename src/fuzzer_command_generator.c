@@ -470,8 +470,9 @@ void generateRandomEnumValue(FuzzerCommand *cmd, ConfigEntry *entry, const char 
                                          "allkeys-random", "noeviction"};
         appendArg(cmd, sdsnew(policies[fuzzRand() % 8]));
     } else if (strcasecmp(config_name, "loglevel") == 0) {
-        static const char *levels[] = {"debug", "verbose", "notice", "warning", "nothing"};
-        appendArg(cmd, sdsnew(levels[fuzzRand() % 5]));
+        /* Not "nothing": it would hide the crash report of a server the fuzzer breaks */
+        static const char *levels[] = {"debug", "verbose", "notice", "warning"};
+        appendArg(cmd, sdsnew(levels[fuzzRand() % 4]));
     } else if (strcasecmp(config_name, "appendfsync") == 0) {
         static const char *options[] = {"everysec", "always", "no"};
         appendArg(cmd, sdsnew(options[fuzzRand() % 3]));
