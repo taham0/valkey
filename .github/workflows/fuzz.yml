@@ -19,6 +19,9 @@ name: Fuzz
 # precise timing may take several reruns.
 
 on:
+  # Test branches only. Not for merging.
+  push:
+    branches: ["test/**"]
   schedule:
     # Not at 00:00 UTC, when daily.yml starts its jobs.
     - cron: "0 5 * * *"
@@ -55,13 +58,13 @@ permissions:
 
 env:
   # Seconds each job fuzzes for. The time window is still under discussion on #5567.
-  FUZZ_DURATION: 1800
+  FUZZ_DURATION: 120
 
 jobs:
   fuzz:
     name: fuzz (${{ matrix.setup }}, ${{ matrix.mode }}, ${{ matrix.build }})
     if: |
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_dispatch' || github.event_name == 'push' ||
       (github.event_name == 'schedule' && github.repository == 'valkey-io/valkey')
     runs-on: ubuntu-latest
     # The build, FUZZ_DURATION, and the hour runtest allows for clients that still
@@ -139,6 +142,21 @@ jobs:
           path: |
             fuzz-info.txt
             tests/tmp/
+      # Test branches only: job logs need a sign-in to read, annotations don't.
+      - name: Annotate the result
+        if: always()
+        run: |
+          set +e
+          out=$(ls tests/tmp/fuzz-soak.*/output.txt 2>/dev/null | head -n 1)
+          msg="no fuzzer output"
+          if [ -n "$out" ]; then
+            msg="$(grep -a -m 1 '^Fuzz seed:' "$out"); $(grep -a '^Fuzz outcome:' "$out" | tail -n 1); $(grep -a 'Total commands sent' "$out" | tail -n 1); $(grep -a 'All client threads completed' "$out" | tail -n 1); TIMEOUT lines: $(grep -a -c 'TIMEOUT:' "$out")"
+          fi
+          crash=$(grep -l -a 'BUG REPORT START' tests/tmp/server*/stdout 2>/dev/null | wc -l)
+          san=$(grep -l -a -E 'Sanitizer|runtime error' tests/tmp/server*/stderr 2>/dev/null | wc -l)
+          echo "::notice title=fuzz $SETUP $MODE $BUILD::$msg; servers with a crash report: $crash; servers with a sanitizer report: $san"
+          grep -a -h -m 3 -E '==> |ERROR: AddressSanitizer|runtime error|TIMEOUT:|MALFORMED|Command that caused' tests/tmp/server*/stdout tests/tmp/server*/stderr "${out:-/dev/null}" 2>/dev/null | head -n 8 | cut -c1-300 | tr -d '%' | while read -r l; do echo "::warning title=fuzz $SETUP $MODE $BUILD::$l"; done
+          true
 
   # Opens an issue for each new crash, assertion or malformed reply in the failed
   # jobs' logs, or comments on the open issue with the same signature. See
