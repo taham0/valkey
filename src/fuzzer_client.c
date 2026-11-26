@@ -383,6 +383,9 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
     options.endpoint.tcp.ip = host;
     options.endpoint.tcp.port = port;
     options.connect_timeout = &timeout; /* Use the timeout defined above */
+    /* Return RESP3 push frames as replies. By default they are dropped, so after a
+     * fuzzed HELLO 3 a SUBSCRIBE, whose replies are all pushes, waits until it times out. */
+    options.options |= VALKEY_OPT_NO_PUSH_AUTOFREE;
 
     ctx = valkeyConnectWithOptions(&options);
     if (!ctx) {
