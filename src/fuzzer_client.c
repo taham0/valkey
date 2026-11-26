@@ -648,6 +648,7 @@ static CommandResult sendBatchAndGetReplies(valkeyContext *ctx, int max_depth, i
         }
         /* Sent on the first read. On failure ctx->err is set and that read reports it. */
         valkeyAppendCommandArgv(ctx, cmd->argc, (const char **)cmd->argv, NULL);
+        incrCounter(COUNTER_COMMANDS_SENT);
         if (cmd->may_block || ctx->err) break;
     }
     *sent = n;
@@ -659,6 +660,10 @@ static CommandResult sendBatchAndGetReplies(valkeyContext *ctx, int max_depth, i
         if (valkeyGetReply(ctx, &r) != VALKEY_OK || r == NULL) {
             /* The replies still to come are lost with the connection */
             ret = handleCommandError(ctx, cmds[i], start_time);
+            if (ret == CMD_TIMEOUT && n > 1) {
+                logMessage(LOG_ERROR, "[Thread %d] The timed-out command was %d of %d in a pipeline; an earlier one may be the cause",
+                           thread_id, i + 1, n);
+            }
             break;
         }
         valkeyReply *reply = r;
@@ -666,7 +671,6 @@ static CommandResult sendBatchAndGetReplies(valkeyContext *ctx, int max_depth, i
         validateReplyAndUpdateCounters(reply, cmds[i]);
         if (ret == CMD_SUCCESS && isMovedForSlot(reply, slot, host, hostlen, port)) ret = CMD_MOVED;
         freeReplyObject(reply);
-        incrCounter(COUNTER_COMMANDS_SENT);
     }
 
     for (int i = 0; i < n; i++) freeCommand(cmds[i]);
