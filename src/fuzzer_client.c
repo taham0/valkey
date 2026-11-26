@@ -369,26 +369,18 @@ static int isServerDisconnected(valkeyContext *ctx) {
              (errno == ECONNRESET || errno == EPIPE || errno == ENOTCONN)));
 }
 
-/* Why a connection attempt failed, so the caller can tell a node that is really
- * gone from one that accepted the connection and then closed it. The latter is
- * a client-eviction disconnect to retry, not an unreachable server. */
-typedef enum {
-    CONNECT_OK = 0,          /* Connected and PING succeeded */
-    CONNECT_TCP_FAILED = 1,  /* The TCP connect itself failed (node is down) */
-    CONNECT_CLOSED_AFTER = 2 /* Connected, then TLS/PING failed (node closed us) */
-} ConnectResult;
-
 /* Connect to a Valkey server with optional TLS support
- * Returns a valkeyContext on success, NULL on error. When why is non-NULL it is
- * set to how the attempt ended.
+ * Returns a valkeyContext on success, NULL on error. If closed_by_node is not
+ * NULL it is set to 1 when the node accepted the connection and then closed
+ * it, as it does when it evicts the client, and to 0 otherwise.
  * ssl_config can be NULL to disable TLS */
-static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *ssl_config, ConnectResult *why) {
+static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *ssl_config, int *closed_by_node) {
     valkeyContext *ctx;
     valkeyReply *reply;
     struct timeval timeout = {1, 500000};                      /* 1.5 seconds for connection */
     struct timeval command_timeout = {COMMAND_TIMEOUT_SEC, 0}; /* Command timeout */
 
-    if (why) *why = CONNECT_TCP_FAILED;
+    if (closed_by_node) *closed_by_node = 0;
     logMessage(LOG_DEBUG, "[thread %d] Connecting to %s:%d%s...", thread_id, host, port, ssl_config ? " (TLS)" : "");
 
     valkeyOptions options = {0};
@@ -409,9 +401,6 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
         return NULL;
     }
 
-    /* The TCP connect succeeded; any failure past here is the node closing us. */
-    if (why) *why = CONNECT_CLOSED_AFTER;
-
     /* Set command timeout for all subsequent operations */
     valkeySetTimeout(ctx, command_timeout);
 
@@ -429,13 +418,14 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
     /* Test connection with a PING */
     reply = valkeyCommand(ctx, "PING");
     if (reply == NULL || ctx->err) {
+        /* A node that closes the connection is evicting us; one that does not answer is not up. */
+        if (closed_by_node) *closed_by_node = isServerDisconnected(ctx);
         logMessage(LOG_INFO, "[Thread %d] PING failed: %s", thread_id, ctx->errstr);
         if (reply) freeReplyObject(reply);
         valkeyFree(ctx);
         return NULL;
     }
 
-    if (why) *why = CONNECT_OK;
     logMessage(LOG_DEBUG, "[Thread %d] Connected successfully", thread_id);
     freeReplyObject(reply);
 
@@ -443,25 +433,23 @@ static valkeyContext *connectToServer(const char *host, int port, cliSSLconfig *
 }
 
 /* Reconnect to server with exponential backoff and optional TLS support
- * Returns new context on success, NULL on failure
+ * Returns new context on success, NULL on failure. *closed_by_node is left as
+ * the last attempt set it: a crashing node can still accept a connection and
+ * reset it, so only the last attempt says whether the node is up.
  * ssl_config can be NULL to disable TLS */
-static valkeyContext *reconnectWithBackoff(const char *host, int port, cliSSLconfig *ssl_config, int *server_reachable) {
+static valkeyContext *reconnectWithBackoff(const char *host, int port, cliSSLconfig *ssl_config, int *closed_by_node) {
     int attempts = 0;
     valkeyContext *ctx = NULL;
 
-    if (server_reachable) *server_reachable = 0;
     logMessage(LOG_DEBUG, "[Thread %d] Attempting to reconnect to %s:%d%s with backoff...",
                thread_id, host, port, ssl_config ? " (TLS)" : "");
 
     while (attempts < RECONNECT_MAX_ATTEMPTS) {
-        ConnectResult why = CONNECT_TCP_FAILED;
-        ctx = connectToServer(host, port, ssl_config, &why);
+        ctx = connectToServer(host, port, ssl_config, closed_by_node);
         if (ctx) {
             logMessage(LOG_DEBUG, "[Thread %d] Successfully reconnected after %d attempts", thread_id, attempts + 1);
             return ctx;
         }
-        /* The node answered the TCP connect at least once, so it is up. */
-        if (why != CONNECT_TCP_FAILED && server_reachable) *server_reachable = 1;
 
         /* Exponential backoff */
         int delay = RECONNECT_BASE_DELAY_MS * (1 << attempts);
@@ -488,12 +476,13 @@ typedef enum {
 typedef enum {
     CLIENT_DONE = 0,        /* Finished, or stopped after another client got a malformed reply */
     CLIENT_UNREACHABLE = 1, /* Could not connect or reconnect to its node */
-    CLIENT_TIMED_OUT = 2    /* A command got no reply within COMMAND_TIMEOUT_SEC */
+    CLIENT_TIMED_OUT = 2,   /* A command got no reply within COMMAND_TIMEOUT_SEC */
+    CLIENT_EVICTED = 3      /* Gave up on a node that is up but kept closing its connection */
 } ClientResult;
 
 /* Outcome of a fuzzing run, printed on the last line and used as the exit code */
 typedef enum {
-    FUZZ_CLEAN = 0,           /* Every client finished */
+    FUZZ_CLEAN = 0,           /* Every client finished or was evicted */
     FUZZ_SETUP_ERROR = 1,     /* Could not connect or start at all */
     FUZZ_MALFORMED_REPLY = 2, /* The server sent invalid RESP */
     FUZZ_UNREACHABLE = 3,     /* Clients lost the connection and could not reconnect */
@@ -725,17 +714,12 @@ ClientResult connectAndFuzz(const char *host, int port, int slot, int commands_n
 
     ClientResult client_result = CLIENT_DONE;
 
-    /* Connect to server */
-    ConnectResult why = CONNECT_TCP_FAILED;
-    ctx = connectToServer(node_host, node_port, ssl_config, &why);
-    if (ctx == NULL) {
-        if (why == CONNECT_TCP_FAILED) return CLIENT_UNREACHABLE;
-        /* The node accepted and then closed us (e.g. eviction): it is up, so
-         * retry with backoff before deciding it is unreachable. */
-        int reachable = 0;
-        ctx = reconnectWithBackoff(node_host, node_port, ssl_config, &reachable);
-        if (ctx == NULL) return reachable ? CLIENT_DONE : CLIENT_UNREACHABLE;
-    }
+    /* Connect to server. A node that accepts and then closes us (e.g. eviction)
+     * is up, so retry with backoff before giving up. */
+    int closed_by_node = 0;
+    ctx = connectToServer(node_host, node_port, ssl_config, &closed_by_node);
+    if (ctx == NULL && closed_by_node) ctx = reconnectWithBackoff(node_host, node_port, ssl_config, &closed_by_node);
+    if (ctx == NULL) return closed_by_node ? CLIENT_EVICTED : CLIENT_UNREACHABLE;
     initThreadClientCtx(global_fuzz_flags, thread_id, slot);
     /* Offset from the generator's seeding, then mix once so that clients with
      * nearby ids don't get the same stream shifted by a step. */
@@ -763,12 +747,9 @@ ClientResult connectAndFuzz(const char *host, int port, int slot, int commands_n
             if (result == CMD_DISCONNECTED || result == CMD_MOVED) {
                 /* Connection closed by server or slot moved, (re)connect to the slot's node */
                 valkeyFree(ctx);
-                int reachable = 0;
-                ctx = reconnectWithBackoff(node_host, node_port, ssl_config, &reachable);
+                ctx = reconnectWithBackoff(node_host, node_port, ssl_config, &closed_by_node);
                 if (ctx == NULL) {
-                    /* Only a TCP-level connect failure means the node is gone. A node
-                     * that keeps accepting and closing is evicting this client. */
-                    client_result = reachable ? CLIENT_DONE : CLIENT_UNREACHABLE;
+                    client_result = closed_by_node ? CLIENT_EVICTED : CLIENT_UNREACHABLE;
                     break;
                 }
                 /* Reset client fuzzer context on successful reconnection */
@@ -863,7 +844,7 @@ static FuzzOutcome runClients(int node_count, const char **hosts, const int *por
 
     pthread_t *threads = malloc(sizeof(pthread_t) * clients_num);
     ThreadData *thread_data = malloc(sizeof(ThreadData) * clients_num);
-    int started = 0, thread_errors = 0, unreachable = 0, timed_out = 0;
+    int started = 0, thread_errors = 0, unreachable = 0, timed_out = 0, evicted = 0;
 
     /* Create threads */
     for (int i = 0; i < clients_num; i++) {
@@ -901,6 +882,7 @@ static FuzzOutcome runClients(int node_count, const char **hosts, const int *por
                 logMessage(LOG_DEBUG, "Thread %d completed with result %d", i + 1, result);
                 if (result == CLIENT_UNREACHABLE) unreachable++;
                 if (result == CLIENT_TIMED_OUT) timed_out++;
+                if (result == CLIENT_EVICTED) evicted++;
             }
         }
         printErrors(thread_data[i].thread_id, &thread_data[i].error_list);
@@ -909,8 +891,8 @@ static FuzzOutcome runClients(int node_count, const char **hosts, const int *por
 
     stopProgressReporting();
 
-    logMessage(LOG_INFO, "All client threads completed. %d finished, %d unreachable, %d timed out, %d thread errors.",
-               clients_num - thread_errors - unreachable - timed_out, unreachable, timed_out, thread_errors);
+    logMessage(LOG_INFO, "All client threads completed. %d finished, %d evicted, %d unreachable, %d timed out, %d thread errors.",
+               clients_num - thread_errors - unreachable - timed_out - evicted, evicted, unreachable, timed_out, thread_errors);
 
     free(threads);
     free(thread_data);
