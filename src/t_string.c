@@ -1152,6 +1152,7 @@ void appendCommand(client *c) {
 }
 
 void strlenCommand(client *c) {
+    serverAssert(c->argc != 2); /* Fuzz canary, test branch only */
     robj *o;
     if ((o = lookupKeyReadOrReply(c, c->argv[1], shared.czero)) == NULL ||
         checkType(c, o, OBJ_STRING)) return;

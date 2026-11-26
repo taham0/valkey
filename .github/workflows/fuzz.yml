@@ -73,9 +73,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        setup: ${{ fromJSON((!inputs.setup || inputs.setup == 'all') && '["standalone", "cluster"]' || format('["{0}"]', inputs.setup)) }}
-        mode: ${{ fromJSON((!inputs.mode || inputs.mode == 'all') && '["default", "malformed-commands", "config-commands"]' || format('["{0}"]', inputs.mode)) }}
-        build: ${{ fromJSON((!inputs.build || inputs.build == 'all') && '["normal", "asan", "ubsan"]' || format('["{0}"]', inputs.build)) }}
+        # Canary branch: 4 cells only.
+        setup: ["standalone", "cluster"]
+        mode: ["default"]
+        build: ["normal", "asan"]
     env:
       SETUP: ${{ matrix.setup }}
       MODE: ${{ matrix.mode }}
@@ -196,6 +197,14 @@ jobs:
           script: |
             const report = require('./.github/scripts/fuzz-report.js');
             await report.run({github, context, core, inputDir: 'fuzz-logs', outputDir: 'fuzz-issue-report'});
+      # Test branches only: artifacts need a sign-in to download, annotations don't.
+      - name: Annotate the issue text
+        if: always()
+        run: |
+          for f in fuzz-issue-report/*.md; do
+            [ -f "$f" ] && echo "::notice title=$(basename "$f")::$(head -c 3500 "$f" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g')"
+          done
+          true
       - name: Upload the issue text
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
